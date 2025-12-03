@@ -1,11 +1,11 @@
 {
-  "name": "KitchenSync - Inventory Management",
-  "short_name": "KitchenSync",
+  "name": "StockWave - Inventory Management",
+  "short_name": "StockWave",
   "description": "AI-Powered Inventory Management for Restaurants",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#2563EB",
+  "theme_color": "#06b6d4",
   "orientation": "portrait-primary",
   "scope": "/",
   "icons": [

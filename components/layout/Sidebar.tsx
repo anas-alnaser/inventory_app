@@ -11,12 +11,12 @@ import {
   BarChart3,
   Settings,
   Users,
-  ChefHat,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Sparkles,
   LogOut,
+  ChefHat,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -41,7 +41,7 @@ const sidebarSections: SidebarSection[] = [
   {
     items: [
       {
-        href: "/",
+        href: "/dashboard",
         label: "Dashboard",
         icon: <LayoutDashboard className="h-5 w-5" />,
       },
@@ -136,11 +136,24 @@ export function Sidebar({ className }: SidebarProps) {
               exit={{ opacity: 0, x: -10 }}
               className="flex items-center gap-2"
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <ChefHat className="h-5 w-5 text-primary-foreground" />
-              </div>
-              <span className="font-bold text-lg text-foreground">KitchenSync</span>
+              <Link href="/dashboard" className="flex items-center gap-2">
+                <img 
+                  src="/icon.svg" 
+                  alt="StockWave" 
+                  className="h-8 w-8 rounded-lg object-contain"
+                />
+                <span className="font-bold text-lg text-foreground">StockWave</span>
+              </Link>
             </motion.div>
+          )}
+          {collapsed && (
+            <Link href="/dashboard" className="flex h-8 w-8 items-center justify-center">
+              <img 
+                src="/icon.svg" 
+                alt="StockWave" 
+                className="h-8 w-8 rounded-lg object-contain"
+              />
+            </Link>
           )}
         </AnimatePresence>
         

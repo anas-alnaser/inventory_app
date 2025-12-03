@@ -2,26 +2,26 @@ import { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'KitchenSync',
-    short_name: 'KitchenSync',
+    name: 'StockWave',
+    short_name: 'StockWave',
     description: 'AI-Powered Inventory Management for Restaurants',
     start_url: '/',
     display: 'standalone',
     background_color: '#0F172A',
-    theme_color: '#2563EB',
+    theme_color: '#06b6d4',
     orientation: 'portrait-primary',
     scope: '/',
     icons: [
       {
-        src: '/icons/icon-192x192.png',
+        src: '/icon.svg',
         sizes: '192x192',
-        type: 'image/png',
+        type: 'image/svg+xml',
         purpose: 'any',
       },
       {
-        src: '/icons/icon-512x512.png',
+        src: '/icon.svg',
         sizes: '512x512',
-        type: 'image/png',
+        type: 'image/svg+xml',
         purpose: 'any',
       },
     ],

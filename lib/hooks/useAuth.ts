@@ -7,7 +7,9 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
-  updateProfile
+  updateProfile,
+  signInWithPopup,
+  GoogleAuthProvider
 } from 'firebase/auth'
 import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore'
 import { auth, db } from '@/lib/firebase'
@@ -190,6 +192,37 @@ export function useAuth() {
     }
   }
 
+  // Sign in with Google
+  const signInWithGoogle = async () => {
+    setState(prev => ({ ...prev, loading: true, error: null }))
+    
+    try {
+      const provider = new GoogleAuthProvider()
+      const userCredential = await signInWithPopup(auth, provider)
+      const firebaseUser = userCredential.user
+      
+      // Check if user document exists, create if not
+      const userData = await fetchUserData(
+        firebaseUser.uid,
+        firebaseUser.email,
+        firebaseUser.displayName
+      )
+
+      setState({
+        user: firebaseUser,
+        userData,
+        loading: false,
+        error: null,
+      })
+
+      return { success: true, user: userData }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Google sign in failed'
+      setState(prev => ({ ...prev, loading: false, error: errorMessage }))
+      return { success: false, error: errorMessage }
+    }
+  }
+
   // Sign out
   const signOut = async () => {
     try {
@@ -232,6 +265,7 @@ export function useAuth() {
     isAuthenticated: !!state.user,
     signUp,
     signIn,
+    signInWithGoogle,
     signOut,
     logout: signOut, // Alias for consistency
     hasRole,

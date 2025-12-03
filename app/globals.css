@@ -7,7 +7,7 @@
 
 @layer base {
   :root {
-    /* KitchenSync Design System - Light Mode */
+    /* StockWave Design System - Light Mode */
     /* Background: Clean White */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
@@ -19,8 +19,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    /* Primary: Royal Blue (#2563EB - blue-600) */
-    --primary: 217.2 91.2% 59.8%;
+    /* Primary: Cyan/Teal (#06b6d4 - cyan-500) */
+    --primary: 188.7 94.5% 42.7%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary: Slate for subtle actions */
@@ -49,7 +49,7 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 217.2 91.2% 59.8%;
+    --ring: 188.7 94.5% 42.7%;
     --radius: 0.5rem;
 
     /* Sidebar specific - Light */
@@ -70,8 +70,8 @@
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
-    /* Primary: Royal Blue (slightly brighter for dark) */
-    --primary: 217.2 91.2% 59.8%;
+    /* Primary: Cyan/Teal (brighter for dark mode to match logo) */
+    --primary: 188.7 94.5% 42.7%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary */
@@ -100,9 +100,9 @@
 
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --ring: 188.7 94.5% 42.7%;
 
-    /* Sidebar specific - Dark */
+    /* Sidebar specific - Dark (deep black to make cyan pop) */
     --sidebar: 222.2 84% 4.9%;
     --sidebar-foreground: 210 40% 98%;
     --sidebar-border: 217.2 32.6% 17.5%;

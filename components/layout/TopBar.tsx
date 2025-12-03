@@ -1,6 +1,7 @@
 "use client"
 
-import { Bell, Building2 } from "lucide-react"
+import Link from "next/link"
+import { Bell } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -45,10 +46,14 @@ export function TopBar({
     <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center justify-between px-4">
         {/* App Name */}
-        <div className="flex items-center gap-2">
-          <Building2 className="h-5 w-5 text-primary" />
-          <span className="font-semibold text-foreground hidden sm:inline">KitchenSync</span>
-        </div>
+        <Link href="/dashboard" className="flex items-center gap-2">
+          <img 
+            src="/icon.svg" 
+            alt="StockWave" 
+            className="h-6 w-6 rounded object-contain"
+          />
+          <span className="font-semibold text-foreground hidden sm:inline">StockWave</span>
+        </Link>
 
         {/* Right Side: Theme Toggle + Notifications + Avatar */}
         <div className="flex items-center gap-1">

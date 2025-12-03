@@ -1,21 +1,46 @@
 "use client"
 
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { TopBar } from "@/components/layout/TopBar"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { BottomNav } from "@/components/layout/BottomNav"
 import { OfflineIndicator } from "@/components/layout/OfflineIndicator"
-
-// Mock data for development
-const mockUser = {
-  name: "Ahmed Hassan",
-  avatar: undefined,
-}
+import { useAuth } from "@/lib/hooks/useAuth"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const router = useRouter()
+  const { isAuthenticated, loading } = useAuth()
+
+  // Protect dashboard routes - redirect to login if not authenticated
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      router.push("/login")
+    }
+  }, [isAuthenticated, loading, router])
+
+  // Show loading state while checking auth
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="space-y-4">
+          <Skeleton className="h-12 w-64" />
+          <Skeleton className="h-8 w-48" />
+        </div>
+      </div>
+    )
+  }
+
+  // Don't render dashboard if not authenticated
+  if (!isAuthenticated) {
+    return null
+  }
+
   return (
     <div className="flex min-h-screen bg-background">
       {/* Desktop Sidebar */}

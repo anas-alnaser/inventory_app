@@ -1,4 +1,3 @@
-import { ChefHat } from "lucide-react"
 
 export default function AuthLayout({
   children,
@@ -8,7 +7,7 @@ export default function AuthLayout({
   return (
     <div className="min-h-screen flex">
       {/* Left Panel - Branding (hidden on mobile) */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-blue-700 to-blue-900 p-12 flex-col justify-between relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-cyan-600 to-cyan-800 p-12 flex-col justify-between relative overflow-hidden">
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 left-0 w-96 h-96 bg-white rounded-full -translate-x-1/2 -translate-y-1/2" />
@@ -18,10 +17,12 @@ export default function AuthLayout({
 
         {/* Logo */}
         <div className="relative z-10 flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 backdrop-blur">
-            <ChefHat className="h-7 w-7 text-white" />
-          </div>
-          <span className="text-2xl font-bold text-white">KitchenSync</span>
+          <img 
+            src="/icon.svg" 
+            alt="StockWave" 
+            className="h-12 w-12 rounded-xl object-contain bg-white/20 backdrop-blur p-2"
+          />
+          <span className="text-2xl font-bold text-white">StockWave</span>
         </div>
 
         {/* Hero Text */}

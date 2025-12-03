@@ -122,7 +122,7 @@ export default function CreateAdminPage() {
             </div>
           </div>
           <CardTitle className="text-2xl">Create Admin Account</CardTitle>
-          <CardDescription>Create the first admin/owner account for KitchenSync</CardDescription>
+          <CardDescription>Create the first admin/owner account for StockWave</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -142,7 +142,7 @@ export default function CreateAdminPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="admin@kitchensync.com"
+                placeholder="admin@stockwave.com"
                 {...register("email")}
               />
               {errors.email && (

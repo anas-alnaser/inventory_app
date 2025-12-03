@@ -5,12 +5,12 @@ import { ThemeProvider } from '@/lib/providers/ThemeProvider'
 import { Toaster } from '@/components/ui/toaster'
 
 export const metadata: Metadata = {
-  title: 'KitchenSync - Inventory Management',
+  title: 'StockWave - Inventory Management',
   description: 'AI-Powered Inventory Management for Restaurants',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'KitchenSync',
+    title: 'StockWave',
   },
   formatDetection: {
     telephone: false,
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#2563EB' },
+    { media: '(prefers-color-scheme: light)', color: '#06b6d4' },
     { media: '(prefers-color-scheme: dark)', color: '#0F172A' },
   ],
   width: 'device-width',
@@ -37,8 +37,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/icon.svg" />
       </head>
       <body className="min-h-screen bg-background antialiased">
         <ThemeProvider
