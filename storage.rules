@@ -1,0 +1,95 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to get user document
+    function getUserData() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    // Helper function to check user role
+    function hasRole(role) {
+      return isAuthenticated() && getUserData().role == role;
+    }
+    
+    // Helper function to check if user is admin or manager
+    function isAdminOrManager() {
+      return hasRole('admin') || hasRole('manager');
+    }
+    
+    // Vision snapshots storage - organized by branch
+    // Path: vision_snapshots/{branchId}/{snapshotId}/{filename}
+    match /vision_snapshots/{branchId}/{snapshotId}/{fileName} {
+      allow read: if isAuthenticated() && (
+        isAdminOrManager() || 
+        getUserData().branch_id == branchId
+      );
+      allow write: if isAuthenticated() && (
+        isAdminOrManager() || 
+        getUserData().branch_id == branchId
+      ) && 
+      request.resource.size < 10 * 1024 * 1024 && // Max 10MB
+      request.resource.contentType.matches('image/.*');
+      allow delete: if isAdminOrManager();
+    }
+    
+    // Menu item images - organized by branch
+    // Path: menu_items/{branchId}/{menuItemId}/{filename}
+    match /menu_items/{branchId}/{menuItemId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        isAdminOrManager() || 
+        getUserData().branch_id == branchId
+      ) && 
+      request.resource.size < 5 * 1024 * 1024 && // Max 5MB
+      request.resource.contentType.matches('image/.*');
+      allow delete: if isAdminOrManager();
+    }
+    
+    // Ingredient images
+    // Path: ingredients/{ingredientId}/{filename}
+    match /ingredients/{ingredientId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrManager() && 
+        request.resource.size < 5 * 1024 * 1024 && // Max 5MB
+        request.resource.contentType.matches('image/.*');
+      allow delete: if hasRole('admin');
+    }
+    
+    // User profile images
+    // Path: profiles/{userId}/{filename}
+    match /profiles/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        isAdminOrManager()
+      ) && 
+      request.resource.size < 2 * 1024 * 1024 && // Max 2MB
+      request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth.uid == userId || isAdminOrManager();
+    }
+    
+    // Reports and exports (admin only)
+    // Path: reports/{branchId}/{reportId}/{filename}
+    match /reports/{branchId}/{reportId}/{fileName} {
+      allow read: if isAuthenticated() && (
+        isAdminOrManager() || 
+        getUserData().branch_id == branchId
+      );
+      allow write: if isAdminOrManager() && 
+        request.resource.size < 50 * 1024 * 1024; // Max 50MB
+      allow delete: if hasRole('admin');
+    }
+    
+    // Deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

@@ -1,9 +1,32 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import './globals.css'
+import { QueryProvider } from '@/lib/providers/QueryProvider'
+import { ThemeProvider } from '@/lib/providers/ThemeProvider'
+import { Toaster } from '@/components/ui/toaster'
 
 export const metadata: Metadata = {
-  title: 'Anas Firebase App',
-  description: 'Next.js application connected to Firebase',
+  title: 'KitchenSync - Inventory Management',
+  description: 'AI-Powered Inventory Management for Restaurants',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'KitchenSync',
+  },
+  formatDetection: {
+    telephone: false,
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#2563EB' },
+    { media: '(prefers-color-scheme: dark)', color: '#0F172A' },
+  ],
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({
@@ -12,9 +35,24 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+      </head>
+      <body className="min-h-screen bg-background antialiased">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <QueryProvider>
+            {children}
+            <Toaster />
+          </QueryProvider>
+        </ThemeProvider>
+      </body>
     </html>
   )
 }
-

@@ -1,0 +1,218 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to get user document
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    // Helper function to check user role
+    function hasRole(role) {
+      return isAuthenticated() && getUserData().role == role;
+    }
+    
+    // Helper function to check if user is admin or owner (full access)
+    function isAdminOrOwner() {
+      return hasRole('admin') || hasRole('owner');
+    }
+    
+    // Helper function to check if user is admin, owner, or manager
+    function isAdminOrManager() {
+      return hasRole('admin') || hasRole('owner') || hasRole('manager');
+    }
+    
+    // Helper function to check if user can manage stock
+    function canManageStock() {
+      return isAdminOrManager() || hasRole('stock_keeper');
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Anyone authenticated can read their own profile
+      // Admin/Owner can read all users
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        isAdminOrOwner()
+      );
+      // Users can create their own document (for auto-sync on login)
+      // Admin/Owner can create any user
+      allow create: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        isAdminOrOwner()
+      );
+      // Users can update their own profile, Admin/Owner can update any
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        isAdminOrOwner()
+      );
+      // Only Admin/Owner can delete users
+      allow delete: if isAdminOrOwner();
+    }
+    
+    // Suppliers collection
+    match /suppliers/{supplierId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // Admin/Owner/Manager can create/update
+      allow create, update: if isAdminOrManager();
+      // Only Admin/Owner can delete
+      allow delete: if isAdminOrOwner();
+    }
+    
+    // Ingredients collection
+    match /ingredients/{ingredientId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // Admin/Owner/Manager can create/update
+      allow create, update: if isAdminOrManager();
+      // Only Admin/Owner can delete
+      allow delete: if isAdminOrOwner();
+    }
+    
+    // Ingredient Stock collection
+    match /ingredient_stock/{stockId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // Stock keepers and above can create/update
+      allow create, update: if canManageStock();
+      // Only Admin/Owner can delete
+      allow delete: if isAdminOrOwner();
+    }
+    
+    // Stock Logs collection
+    match /stock_logs/{logId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // Stock keepers and above can create
+      allow create: if canManageStock();
+      // Only Admin/Owner can update/delete
+      allow update, delete: if isAdminOrOwner();
+    }
+    
+    // Menu Items collection
+    match /menu_items/{menuItemId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // Admin/Owner/Manager can create/update
+      allow create, update: if isAdminOrManager();
+      // Only Admin/Owner can delete
+      allow delete: if isAdminOrOwner();
+    }
+    
+    // Menu Item Ingredients collection
+    match /menu_item_ingredients/{itemId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // Admin/Owner/Manager can create/update/delete
+      allow create, update, delete: if isAdminOrManager();
+    }
+    
+    // Purchase Orders collection
+    match /purchase_orders/{orderId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // Admin/Owner/Manager can create/update
+      allow create, update: if isAdminOrManager();
+      // Only Admin/Owner can delete
+      allow delete: if isAdminOrOwner();
+      
+      // Purchase Order Items subcollection
+      match /purchase_order_items/{itemId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAdminOrManager();
+        allow delete: if isAdminOrOwner();
+      }
+    }
+    
+    // POS Orders collection
+    match /pos_orders/{orderId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // Admin/Owner/Manager can create/update
+      allow create, update: if isAdminOrManager();
+      // Only Admin/Owner can delete
+      allow delete: if isAdminOrOwner();
+      
+      // POS Order Items subcollection
+      match /pos_order_items/{itemId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAdminOrManager();
+        allow delete: if isAdminOrOwner();
+      }
+      
+      // Payments subcollection
+      match /payments/{paymentId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAdminOrManager();
+        allow update, delete: if isAdminOrOwner();
+      }
+    }
+    
+    // Forecasts collection
+    match /forecasts/{forecastId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // System/AI can create
+      allow create: if isAuthenticated();
+      // Only Admin/Owner can update/delete
+      allow update, delete: if isAdminOrOwner();
+    }
+    
+    // Waste Predictions collection
+    match /waste_predictions/{predictionId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // System/AI can create
+      allow create: if isAuthenticated();
+      // Only Admin/Owner can update/delete
+      allow update, delete: if isAdminOrOwner();
+    }
+    
+    // Anomalies collection
+    match /anomalies/{anomalyId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // System can create
+      allow create: if isAuthenticated();
+      // Users can update (mark as resolved), Admin/Owner can delete
+      allow update: if isAuthenticated();
+      allow delete: if isAdminOrOwner();
+    }
+    
+    // Vision Snapshots collection
+    match /vision_snapshots/{snapshotId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // Stock keepers and above can create
+      allow create: if canManageStock();
+      // Only Admin/Owner can update/delete
+      allow update, delete: if isAdminOrOwner();
+    }
+    
+    // Analytics Cache collection
+    match /analytics_cache/{cacheId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // System can create/update
+      allow create, update: if isAuthenticated();
+      // Only Admin/Owner can delete
+      allow delete: if isAdminOrOwner();
+    }
+    
+    // System Logs collection
+    match /system_logs/{logId} {
+      // Only Admin/Owner/Manager can read
+      allow read: if isAdminOrManager();
+      // System can create
+      allow create: if isAuthenticated();
+      // Only Admin/Owner can update/delete
+      allow update, delete: if isAdminOrOwner();
+    }
+  }
+}
