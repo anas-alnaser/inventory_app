@@ -48,7 +48,7 @@ const navItems: NavItem[] = [
     icon: <Truck className="h-5 w-5" />,
   },
   {
-    href: "/menu",
+    href: "/menu-items",
     label: "Menu",
     icon: <MenuIcon className="h-5 w-5" />,
   },
