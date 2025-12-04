@@ -4,7 +4,7 @@ export type UserRole = 'owner' | 'admin' | 'manager' | 'stock_keeper';
 export type PurchaseOrderStatus = 'pending' | 'approved' | 'received' | 'cancelled';
 export type PaymentMethod = 'cash' | 'card' | 'mobile_payment';
 export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
-export type StockLogReason = 'purchase' | 'sale' | 'waste' | 'adjustment' | 'transfer';
+export type StockLogReason = 'purchase' | 'sale' | 'waste' | 'adjustment' | 'transfer' | 'consumption' | 'expired' | 'correction';
 export type Unit = 'kg' | 'g' | 'L' | 'mL' | 'piece' | 'box' | 'pack';
 export type WasteRiskLevel = 'low' | 'medium' | 'high' | 'critical';
 export type AnomalyType = 'stock_shortage' | 'excessive_waste' | 'price_anomaly' | 'sales_anomaly' | 'other';
@@ -51,12 +51,20 @@ export interface Ingredient {
   created_at: Date | string;
 }
 
+export interface MenuItemRecipe {
+  ingredientId: string;
+  ingredientName: string;
+  quantity: number;
+  unit: string;
+}
+
 export interface MenuItem {
   id: string;
   name: string;
   category: string;
   price: number;
-  branch_id: string;
+  recipe?: MenuItemRecipe[];
+  branch_id?: string;
   created_at: Date | string;
 }
 

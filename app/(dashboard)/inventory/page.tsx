@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Search, Plus, Package, Trash2, AlertTriangle, Clock, ArrowUp, ArrowDown } from "lucide-react"
+import { Search, Plus, Package, Trash2, AlertTriangle, Clock, ArrowUp, ArrowDown, Minus } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -65,6 +65,7 @@ import {
   createIngredient,
   getStockLogsByIngredient,
   getAllUsers,
+  updateStockTransaction,
   type CreateIngredientData,
 } from "@/lib/services"
 import type { StockLog } from "@/types/entities"
@@ -137,11 +138,16 @@ export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
   const [isAddStockOpen, setIsAddStockOpen] = useState(false)
+  const [isLogUsageOpen, setIsLogUsageOpen] = useState(false)
   const [isAddIngredientOpen, setIsAddIngredientOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
   const [stockQuantity, setStockQuantity] = useState(0)
   const [stockUnit, setStockUnit] = useState("kg")
+  const [usageQuantity, setUsageQuantity] = useState(0)
+  const [usageUnit, setUsageUnit] = useState("kg")
+  const [usageBaseQuantity, setUsageBaseQuantity] = useState(0)
+  const [usageReason, setUsageReason] = useState<"consumption" | "waste" | "expired" | "correction">("consumption")
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [selectedIngredientForHistory, setSelectedIngredientForHistory] = useState<InventoryItem | null>(null)
@@ -250,6 +256,47 @@ export default function InventoryPage() {
       toast({
         title: "Error",
         description: error.message || "Failed to add stock",
+        variant: "destructive",
+      })
+    },
+  })
+
+  // Log usage mutation
+  const logUsageMutation = useMutation({
+    mutationFn: async (data: {
+      ingredient_id: string
+      baseQuantity: number
+      reason: "consumption" | "waste" | "expired" | "correction"
+    }) => {
+      if (!userData?.id) {
+        throw new Error("User must be logged in")
+      }
+      
+      return updateStockTransaction(
+        data.ingredient_id,
+        -data.baseQuantity, // Negative to deduct
+        userData.id,
+        data.reason as any,
+        `Logged usage: ${data.reason}`
+      )
+    },
+    onSuccess: () => {
+      // Real-time listener will update automatically
+      toast({
+        title: "Usage Logged",
+        description: `Successfully logged ${usageReason} for ${selectedItem?.ingredient.name}`,
+        variant: "success",
+      })
+      setIsLogUsageOpen(false)
+      setSelectedItem(null)
+      setUsageQuantity(0)
+      setUsageBaseQuantity(0)
+      setUsageReason("consumption")
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to log usage",
         variant: "destructive",
       })
     },
@@ -740,6 +787,98 @@ export default function InventoryPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* Log Usage Dialog */}
+          <Dialog open={isLogUsageOpen} onOpenChange={setIsLogUsageOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Log Usage / Waste</DialogTitle>
+                <DialogDescription>
+                  Record ingredient usage, waste, or corrections. This will deduct from stock.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Ingredient</Label>
+                  <Select
+                    value={selectedItem?.ingredient.id || ""}
+                    onValueChange={(value) => {
+                      const item = inventory.find(i => i.ingredient.id === value)
+                      setSelectedItem(item || null)
+                      if (item) {
+                        setUsageUnit(item.ingredient.unit)
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select ingredient" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {inventory.map((item) => (
+                        <SelectItem key={item.ingredient.id} value={item.ingredient.id}>
+                          {item.ingredient.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedItem && (
+                  <>
+                    <SmartUnitInput
+                      value={usageQuantity}
+                      unit={usageUnit}
+                      unitType={getUnitType(selectedItem.ingredient.unit)}
+                      onChange={(qty, unit, baseValue) => {
+                        setUsageQuantity(qty)
+                        setUsageUnit(unit)
+                        setUsageBaseQuantity(baseValue)
+                      }}
+                      label="Quantity to Remove"
+                      placeholder="Enter amount"
+                    />
+                    <div className="space-y-2">
+                      <Label htmlFor="usage-reason">Reason</Label>
+                      <Select value={usageReason} onValueChange={(value: any) => setUsageReason(value)}>
+                        <SelectTrigger id="usage-reason">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="consumption">Consumption</SelectItem>
+                          <SelectItem value="waste">Waste</SelectItem>
+                          <SelectItem value="expired">Expired</SelectItem>
+                          <SelectItem value="correction">Correction</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsLogUsageOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (!selectedItem || usageBaseQuantity <= 0) return
+                    logUsageMutation.mutate({
+                      ingredient_id: selectedItem.ingredient.id,
+                      baseQuantity: usageBaseQuantity,
+                      reason: usageReason,
+                    })
+                  }}
+                  disabled={
+                    inventory.length === 0 ||
+                    !selectedItem ||
+                    usageBaseQuantity <= 0 ||
+                    logUsageMutation.isPending
+                  }
+                  variant="destructive"
+                >
+                  {logUsageMutation.isPending ? "Logging..." : "Log Usage"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -876,8 +1015,22 @@ export default function InventoryPage() {
                             size="sm"
                             onClick={() => {
                               setSelectedItem(item)
+                              setIsLogUsageOpen(true)
+                            }}
+                            title="Log Usage / Waste"
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Minus className="h-4 w-4 mr-1" />
+                            Use
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedItem(item)
                               setIsAddStockOpen(true)
                             }}
+                            title="Add Stock"
                           >
                             <Plus className="h-4 w-4 mr-1" />
                             Add
@@ -986,6 +1139,19 @@ export default function InventoryPage() {
                           title="View History"
                         >
                           <Clock className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedItem(item)
+                            setIsLogUsageOpen(true)
+                          }}
+                          title="Log Usage / Waste"
+                          className="text-destructive"
+                        >
+                          <Minus className="h-4 w-4 mr-1" />
+                          Use
                         </Button>
                         <Button
                           variant="ghost"

@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Search, Plus, ChefHat, AlertTriangle } from "lucide-react"
+import { Search, Plus, ChefHat, AlertTriangle, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -29,17 +29,31 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { toast } from "@/lib/hooks/use-toast"
 import { useAuth } from "@/lib/hooks/useAuth"
 import { collection, addDoc, getDocs, query, orderBy, serverTimestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import type { MenuItem } from "@/types/entities"
+import type { MenuItem, MenuItemRecipe } from "@/types/entities"
+import { getIngredients } from "@/lib/services"
 
 const menuItemFormSchema = z.object({
   name: z.string().min(2, "Item name must be at least 2 characters"),
   category: z.string().min(1, "Category is required"),
   price: z.number().min(0, "Price must be positive"),
+  recipe: z.array(z.object({
+    ingredientId: z.string(),
+    ingredientName: z.string(),
+    quantity: z.number().min(0),
+    unit: z.string(),
+  })).optional(),
 })
 
 type MenuItemFormData = z.infer<typeof menuItemFormSchema>
@@ -82,6 +96,10 @@ export default function MenuItemsPage() {
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState("")
   const [isAddOpen, setIsAddOpen] = useState(false)
+  const [selectedRecipe, setSelectedRecipe] = useState<MenuItemRecipe[]>([])
+  const [recipeIngredientId, setRecipeIngredientId] = useState("")
+  const [recipeQuantity, setRecipeQuantity] = useState(0)
+  const [recipeUnit, setRecipeUnit] = useState("g")
 
   const {
     register,
@@ -104,9 +122,19 @@ export default function MenuItemsPage() {
     queryFn: () => getMenuItems(),
   })
 
+  const {
+    data: ingredients = [],
+  } = useQuery({
+    queryKey: ["ingredients"],
+    queryFn: () => getIngredients(),
+  })
+
   const createMenuItemMutation = useMutation({
     mutationFn: async (data: MenuItemFormData) => {
-      return createMenuItem(data)
+      return createMenuItem({
+        ...data,
+        recipe: selectedRecipe.length > 0 ? selectedRecipe : undefined,
+      })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["menu-items"] })
@@ -117,6 +145,7 @@ export default function MenuItemsPage() {
       })
       setIsAddOpen(false)
       reset()
+      setSelectedRecipe([])
     },
     onError: (error: any) => {
       toast({
@@ -215,6 +244,82 @@ export default function MenuItemsPage() {
                     <p className="text-sm text-destructive">{errors.price.message}</p>
                   )}
                 </div>
+                
+                {/* Recipe Section */}
+                <div className="space-y-2">
+                  <Label>Recipe (Optional)</Label>
+                  <div className="space-y-2">
+                    {selectedRecipe.map((item, index) => (
+                      <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                        <span className="flex-1 text-sm">
+                          {item.ingredientName}: {item.quantity} {item.unit}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedRecipe(selectedRecipe.filter((_, i) => i !== index))
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <div className="flex gap-2">
+                      <Select value={recipeIngredientId} onValueChange={setRecipeIngredientId}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select ingredient" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ingredients.map((ing) => (
+                            <SelectItem key={ing.id} value={ing.id}>
+                              {ing.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        placeholder="Qty"
+                        value={recipeQuantity || ""}
+                        onChange={(e) => setRecipeQuantity(Number(e.target.value) || 0)}
+                        className="w-24"
+                      />
+                      <Input
+                        placeholder="Unit"
+                        value={recipeUnit}
+                        onChange={(e) => setRecipeUnit(e.target.value)}
+                        className="w-20"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const ingredient = ingredients.find(i => i.id === recipeIngredientId)
+                          if (ingredient && recipeQuantity > 0) {
+                            setSelectedRecipe([
+                              ...selectedRecipe,
+                              {
+                                ingredientId: recipeIngredientId,
+                                ingredientName: ingredient.name,
+                                quantity: recipeQuantity,
+                                unit: recipeUnit,
+                              }
+                            ])
+                            setRecipeIngredientId("")
+                            setRecipeQuantity(0)
+                            setRecipeUnit("g")
+                          }
+                        }}
+                        disabled={!recipeIngredientId || recipeQuantity <= 0}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                
                 <DialogFooter>
                   <Button
                     type="button"
@@ -270,6 +375,11 @@ export default function MenuItemsPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">{item.category}</Badge>
+                    {item.recipe && item.recipe.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {item.recipe.length} ingredient{item.recipe.length !== 1 ? 's' : ''}
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell className="text-right font-semibold">
                     {item.price.toFixed(2)} JOD

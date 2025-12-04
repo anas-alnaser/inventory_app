@@ -350,9 +350,13 @@ export function calculateStockStatus(
   min?: number,
   max?: number
 ): 'good' | 'low' | 'critical' | 'out' {
-  if (current <= 0) return 'out';
-  if (min && current <= min * 0.5) return 'critical';
-  if (min && current <= min) return 'low';
+  // Ensure we're comparing numbers, not strings
+  const currentNum = Number(current) || 0;
+  const minNum = min !== undefined && min !== null ? Number(min) : undefined;
+  
+  if (currentNum <= 0) return 'out';
+  if (minNum !== undefined && currentNum <= minNum * 0.5) return 'critical';
+  if (minNum !== undefined && currentNum <= minNum) return 'low';
   return 'good';
 }
 
