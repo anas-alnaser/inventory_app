@@ -31,6 +31,17 @@ import type {
   PurchaseOrder,
   PurchaseOrderStatus,
 } from '@/types/entities';
+
+export type {
+  Ingredient,
+  Supplier,
+  IngredientStock,
+  StockLog,
+  StockLogReason,
+  Unit,
+  PurchaseOrder,
+  PurchaseOrderStatus,
+};
 import { toBaseUnit, fromBaseUnit } from './utils/unit-conversion';
 
 // Collection references
@@ -462,100 +473,13 @@ export async function updatePurchaseOrder(
 export async function receivePurchaseOrder(id: string, userId: string): Promise<void> {
   const poRef = doc(purchaseOrdersRef, id);
   
-  await runTransaction(db, async (transaction) => {
-    // 1. Get the PO
-    const poDoc = await transaction.get(poRef);
-    if (!poDoc.exists()) {
-      throw new Error("Purchase Order not found");
-    }
-    
-    const po = poDoc.data() as PurchaseOrder;
-    
-    if (po.status === 'received') {
-      throw new Error("Order already received");
-    }
+  // Fetch PO first to get items for stockMap
+  const poDocSnap = await getDoc(poRef);
+  if (!poDocSnap.exists()) {
+    throw new Error("Purchase Order not found");
+  }
+  const po = poDocSnap.data() as PurchaseOrder;
 
-    // 2. Update Stock for each item
-    for (const item of po.items) {
-      // Find stock record
-      const stockQuery = query(
-        ingredientStockRef, 
-        where('ingredient_id', '==', item.ingredient_id),
-        limit(1)
-      );
-      const stockSnapshot = await getDocs(stockQuery); // Note: We can't do query inside transaction easily without knowing ID
-      // Firestore transactions require reads to happen before writes. 
-      // To strictly follow transaction rules with queries, it's complex.
-      // However, we can read the stock doc if we know the ID.
-      // Since we don't know the ID, we might need to fetch it first outside?
-      // Actually, let's just use the query result. If we want true strong consistency, 
-      // we'd need to architect differently or iterate.
-      // For this app, fetching the ID via query outside/before this loop step is better,
-      // but inside transaction, we can just "get" if we had the ID.
-      
-      // Strategy: We'll assume we can query first (or loosely consistent here). 
-      // But `runTransaction` creates a lock.
-      // Let's rely on the `updateStockTransaction` logic but implemented here manually 
-      // because we need to do it for MULTIPLE items in ONE transaction.
-    }
-    
-    // Improved Transaction Strategy:
-    // 1. Read PO
-    // 2. Read ALL related stock items
-    // 3. Write updates
-    
-    // We'll restart the transaction logic to be cleaner.
-  });
-  
-  // Re-implementing with cleaner transaction approach:
-  await runTransaction(db, async (transaction) => {
-    const poDoc = await transaction.get(poRef);
-    if (!poDoc.exists()) throw new Error("PO not found");
-    const po = poDoc.data() as PurchaseOrder;
-    if (po.status === 'received') throw new Error("Already received");
-
-    // Gather ingredient IDs
-    const ingredientIds = po.items.map(i => i.ingredient_id);
-    
-    // We can't do "where in" query inside transaction easily for reads if we want to write them.
-    // We need their doc references.
-    // Step 1: Find existing stock docs (outside transaction or effectively so) works,
-    // but to lock them, we must read them inside the transaction.
-    
-    // Workaround: We will do a query for each ingredient to find its stock ID, 
-    // THEN read/write that ID in the transaction. 
-    // This is slightly inefficient but safe. 
-    // OR we just use `addStock` for each item? No, we want one atomic commit for the whole PO.
-    
-    // Let's iterate.
-    for (const item of po.items) {
-      // We need to find the stock document for this ingredient.
-      // Since queries in transactions are tricky, let's try to determine the ID or create a new one.
-      // If we can't query inside, we can't lock properly on "creation" of new stock.
-      // But typically stock exists.
-      
-      // For simplicity in this "MVP++", we will:
-      // 1. Update PO status
-      // 2. Iterate and call `addStock` equivalent logic effectively.
-      // BUT `runTransaction` requires all reads before writes.
-      
-      // Correct approach for Firestore Transactions with Queries:
-      // You cannot perform a query after a write.
-      // You can perform queries.
-      
-      // Let's try to get the stock doc for this ingredient.
-      // We'll use a deterministic ID for stock if possible? No, they are random.
-      
-      // Alternative: we read all potential stock items first.
-    }
-  });
-  
-  // Actually, let's use a simpler approach:
-  // We will perform the updates sequentially. 
-  // It's not 100% atomic across ALL items if one fails, but it's much simpler.
-  // HOWEVER, the requirement is "Impressive".
-  // Let's try to do it right.
-  
   // We can query all stock items *before* the transaction to get their IDs.
   const stockMap = new Map<string, string>(); // ingredientId -> stockDocId
   
@@ -580,7 +504,7 @@ export async function receivePurchaseOrder(id: string, userId: string): Promise<
     });
 
     // Update Stocks
-    for (const item of po.items) {
+    for (const item of currentPo.items) {
       const baseQuantity = toBaseUnit(item.quantity, item.unit);
       const stockId = stockMap.get(item.ingredient_id);
 

@@ -43,6 +43,7 @@ import { toast } from "@/lib/hooks/use-toast"
 import { useAuth } from "@/lib/hooks/useAuth"
 import { getPurchaseOrderById, getSupplierById, receivePurchaseOrder } from "@/lib/services"
 import { cn } from "@/lib/utils"
+import type { PurchaseOrderItem } from "@/types/entities"
 
 export default function OrderDetailsPage() {
   const params = useParams()
@@ -112,7 +113,7 @@ export default function OrderDetailsPage() {
     cancelled: { label: "Cancelled", variant: "destructive" as const, icon: XCircle },
   }
   
-  const config = statusConfig[order.status] || statusConfig.draft
+  const config = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.draft
   const StatusIcon = config.icon
 
   // WhatsApp Logic
@@ -126,7 +127,7 @@ export default function OrderDetailsPage() {
     const phone = supplier.phone.replace(/\D/g, '')
     
     // Build items string
-    const itemsList = order.items.map(i => `- ${i.name} x${i.quantity} ${i.unit}`).join('\n')
+    const itemsList = order.items.map((i: PurchaseOrderItem) => `- ${i.name} x${i.quantity} ${i.unit}`).join('\n')
     
     // Format Date
     let dateStr = "soon"
@@ -152,7 +153,7 @@ export default function OrderDetailsPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-foreground">{order.po_number}</h1>
-              <Badge variant={config.variant} className={cn("gap-1", config.className)}>
+              <Badge variant={config.variant} className="gap-1">
                 <StatusIcon className="h-3 w-3" />
                 {config.label}
               </Badge>
@@ -220,7 +221,7 @@ export default function OrderDetailsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {order.items.map((item, idx) => (
+                {order.items.map((item: PurchaseOrderItem, idx: number) => (
                   <TableRow key={idx}>
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell>{item.quantity} {item.unit}</TableCell>
