@@ -141,7 +141,7 @@ export default function MenuItemsPage() {
       toast({
         title: "Menu Item Added",
         description: "New menu item has been added successfully.",
-        variant: "success",
+        variant: "default",
       })
       setIsAddOpen(false)
       reset()

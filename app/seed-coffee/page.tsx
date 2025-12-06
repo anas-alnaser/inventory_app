@@ -197,7 +197,7 @@ export default function SeedCoffeePage() {
       toast({
         title: "Success!",
         description: "Coffee shop data has been seeded successfully.",
-        variant: "success",
+        variant: "default",
       })
 
       // Redirect to dashboard after a short delay

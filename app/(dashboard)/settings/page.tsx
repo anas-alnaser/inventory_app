@@ -58,7 +58,7 @@ export default function SettingsPage() {
       toast({
         title: "Profile Updated",
         description: "Your profile has been updated successfully.",
-        variant: "success",
+        variant: "default",
       })
     },
     onError: (error: any) => {
@@ -79,7 +79,7 @@ export default function SettingsPage() {
     toast({
       title: "Preferences Saved",
       description: "Your preferences have been saved.",
-      variant: "success",
+      variant: "default",
     })
   }
 

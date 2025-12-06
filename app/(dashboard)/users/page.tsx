@@ -185,7 +185,7 @@ export default function UsersPage() {
       toast({
         title: "User Created",
         description: "User has been created in both Firebase Authentication and Firestore.",
-        variant: "success",
+        variant: "default",
       })
       setIsInviteOpen(false)
       reset()
@@ -209,7 +209,7 @@ export default function UsersPage() {
       toast({
         title: "User Deleted",
         description: "The user has been removed.",
-        variant: "success",
+        variant: "default",
       })
       setIsDeleteDialogOpen(false)
       setUserToDelete(null)

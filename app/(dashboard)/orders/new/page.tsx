@@ -112,7 +112,7 @@ export default function NewOrderPage() {
       toast({
         title: "Order Created",
         description: "Purchase order has been successfully created.",
-        variant: "success",
+        variant: "default",
       })
       router.push(`/orders/${id}`)
     },

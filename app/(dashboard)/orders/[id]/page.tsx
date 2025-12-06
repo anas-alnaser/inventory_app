@@ -74,7 +74,7 @@ export default function OrderDetailsPage() {
       toast({
         title: "Order Received",
         description: "Inventory has been updated and stock logs created.",
-        variant: "success",
+        variant: "default",
       })
       queryClient.invalidateQueries({ queryKey: ["order", id] })
       queryClient.invalidateQueries({ queryKey: ["inventory"] }) // Update inventory list
@@ -108,7 +108,7 @@ export default function OrderDetailsPage() {
   const statusConfig = {
     draft: { label: "Draft", variant: "secondary" as const, icon: FileText },
     ordered: { label: "Ordered", variant: "default" as const, icon: Truck, className: "bg-blue-600" },
-    received: { label: "Received", variant: "success" as const, icon: CheckCircle2, className: "bg-green-600" },
+    received: { label: "Received", variant: "default" as const, icon: CheckCircle2, className: "bg-green-600" },
     cancelled: { label: "Cancelled", variant: "destructive" as const, icon: XCircle },
   }
   

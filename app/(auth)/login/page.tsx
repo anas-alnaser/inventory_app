@@ -42,7 +42,7 @@ export default function LoginPage() {
       toast({
         title: "Welcome back!",
         description: "You have successfully signed in.",
-        variant: "success",
+        variant: "default",
       })
       router.push("/dashboard")
     } else {
@@ -91,7 +91,7 @@ export default function LoginPage() {
                 toast({
                   title: "Welcome back!",
                   description: "You have successfully signed in with Google.",
-                  variant: "success",
+                  variant: "default",
                 })
                 router.push("/dashboard")
               } else {

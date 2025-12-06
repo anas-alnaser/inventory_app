@@ -90,7 +90,7 @@ const ingredientFormSchema = z.object({
 type IngredientFormData = z.infer<typeof ingredientFormSchema>
 
 const statusConfig = {
-  good: { label: "In Stock", variant: "success" as const, color: "text-success" },
+  good: { label: "In Stock", variant: "default" as const, color: "text-success" },
   low: { label: "Low Stock", variant: "warning" as const, color: "text-warning" },
   critical: { label: "Critical", variant: "destructive" as const, color: "text-destructive" },
   out: { label: "Out of Stock", variant: "destructive" as const, color: "text-destructive" },
@@ -248,7 +248,7 @@ export default function InventoryPage() {
       toast({
         title: "Stock Added",
         description: `Successfully added stock to ${selectedItem?.ingredient.name}`,
-        variant: "success",
+        variant: "default",
       })
       setIsAddStockOpen(false)
       setSelectedItem(null)
@@ -287,7 +287,7 @@ export default function InventoryPage() {
       toast({
         title: "Usage Logged",
         description: `Successfully logged ${usageReason} for ${selectedItem?.ingredient.name}`,
-        variant: "success",
+        variant: "default",
       })
       setIsLogUsageOpen(false)
       setSelectedItem(null)
@@ -327,7 +327,7 @@ export default function InventoryPage() {
       toast({
         title: "Item Created",
         description: "New ingredient has been added to your inventory.",
-        variant: "success",
+        variant: "default",
       })
       setIsAddIngredientOpen(false)
       resetIngredient()
@@ -351,7 +351,7 @@ export default function InventoryPage() {
       toast({
         title: "Ingredient Deleted",
         description: "The ingredient has been removed from your inventory.",
-        variant: "success",
+        variant: "default",
       })
       setIsDeleteDialogOpen(false)
       setItemToDelete(null)

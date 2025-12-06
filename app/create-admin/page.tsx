@@ -63,7 +63,7 @@ export default function CreateAdminPage() {
       toast({
         title: "Admin Account Created!",
         description: "Admin account has been created successfully.",
-        variant: "success",
+        variant: "default",
       })
     } catch (error: any) {
       toast({

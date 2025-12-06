@@ -129,7 +129,7 @@ export default function SuppliersPage() {
       toast({
         title: "Supplier Added",
         description: "New supplier has been added to your directory.",
-        variant: "success",
+        variant: "default",
       })
       setIsAddOpen(false)
       reset()
@@ -153,7 +153,7 @@ export default function SuppliersPage() {
       toast({
         title: "Supplier Deleted",
         description: "The supplier has been removed from your directory.",
-        variant: "success",
+        variant: "default",
       })
       setIsDeleteDialogOpen(false)
       setSupplierToDelete(null)
