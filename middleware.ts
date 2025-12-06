@@ -2,13 +2,18 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 // Public routes that don't require authentication
-const publicRoutes = ['/', '/login', '/signup']
+const publicRoutes = ['/', '/login']
 
 // Protected routes that require authentication
 const protectedRoutes = ['/dashboard', '/inventory', '/suppliers', '/menu-items', '/reports', '/forecasts', '/anomalies', '/users', '/settings']
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // Redirect signup to login
+  if (pathname === '/signup') {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
 
   // Check if the route is protected
   const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route))

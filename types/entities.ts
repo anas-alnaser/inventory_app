@@ -1,7 +1,7 @@
 // TypeScript types based on ERD schema
 
 export type UserRole = 'owner' | 'admin' | 'manager' | 'stock_keeper';
-export type PurchaseOrderStatus = 'pending' | 'approved' | 'received' | 'cancelled';
+export type PurchaseOrderStatus = 'draft' | 'ordered' | 'received' | 'cancelled';
 export type PaymentMethod = 'cash' | 'card' | 'mobile_payment';
 export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
 export type StockLogReason = 'purchase' | 'sale' | 'waste' | 'adjustment' | 'transfer' | 'consumption' | 'expired' | 'correction';
@@ -69,22 +69,27 @@ export interface MenuItem {
 }
 
 // Purchasing and Inventory
-export interface PurchaseOrder {
-  id: string;
-  supplier_id: string;
-  branch_id: string;
-  status: PurchaseOrderStatus;
-  recommended_by_ai: boolean;
-  created_at: Date | string;
-}
-
 export interface PurchaseOrderItem {
-  id: string;
-  purchase_order_id: string;
   ingredient_id: string;
+  name: string;
   quantity: number;
+  unit: string;
   cost_per_unit: number;
   total_cost: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  po_number: string;
+  supplier_id: string;
+  supplier_name: string;
+  branch_id: string;
+  status: PurchaseOrderStatus;
+  items: PurchaseOrderItem[];
+  total_cost: number;
+  expected_delivery_date: Date | string;
+  created_at: Date | string;
+  updated_at?: Date | string;
 }
 
 export interface IngredientStock {

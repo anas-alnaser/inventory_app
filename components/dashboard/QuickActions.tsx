@@ -1,46 +1,51 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { motion } from "framer-motion"
 import { Minus, Plus, ScanBarcode, BarChart3 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { QuickOperationDialog } from "./QuickOperationDialog"
+import { QuickFindModal } from "./QuickFindModal"
 
 interface QuickAction {
-  href: string
+  id: string
   label: string
   description: string
   icon: React.ReactNode
   color: "primary" | "warning" | "success" | "secondary"
+  href?: string
 }
 
 const defaultActions: QuickAction[] = [
   {
-    href: "/inventory/usage",
+    id: "usage",
     label: "Log Usage",
     description: "Record ingredient usage",
     icon: <Minus className="h-6 w-6" />,
     color: "warning",
   },
   {
-    href: "/inventory/add",
+    id: "add",
     label: "Add Stock",
     description: "Receive new inventory",
     icon: <Plus className="h-6 w-6" />,
     color: "success",
   },
   {
-    href: "/scan",
+    id: "scan",
     label: "Scan Barcode",
     description: "Quick lookup or entry",
     icon: <ScanBarcode className="h-6 w-6" />,
     color: "primary",
   },
   {
-    href: "/reports",
+    id: "reports",
     label: "Reports",
     description: "View analytics",
     icon: <BarChart3 className="h-6 w-6" />,
     color: "secondary",
+    href: "/reports",
   },
 ]
 
@@ -80,23 +85,36 @@ interface QuickActionsProps {
 }
 
 export function QuickActions({ actions = defaultActions }: QuickActionsProps) {
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-      {actions.map((action, index) => {
-        const config = colorConfig[action.color]
+  const [opMode, setOpMode] = useState<"add" | "use" | null>(null)
+  const [showFind, setShowFind] = useState(false)
 
-        return (
-          <motion.div
-            key={action.href}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-          >
-            <Link
-              href={action.href}
+  const handleActionClick = (actionId: string) => {
+    switch (actionId) {
+      case "usage":
+        setOpMode("use")
+        break
+      case "add":
+        setOpMode("add")
+        break
+      case "scan":
+        setShowFind(true)
+        break
+      default:
+        break
+    }
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        {actions.map((action, index) => {
+          const config = colorConfig[action.color]
+          
+          const Content = (
+            <div
               className={cn(
-                "flex flex-col items-center p-4 md:p-6 rounded-md border-2 transition-all duration-200",
-                "active:scale-95 touch-manipulation",
+                "flex flex-col items-center p-4 md:p-6 rounded-md border-2 transition-all duration-200 h-full w-full",
+                "active:scale-95 touch-manipulation cursor-pointer",
                 config.bg,
                 config.border,
                 config.hoverBg
@@ -116,10 +134,43 @@ export function QuickActions({ actions = defaultActions }: QuickActionsProps) {
               <span className="text-xs text-muted-foreground text-center mt-1 hidden md:block">
                 {action.description}
               </span>
-            </Link>
-          </motion.div>
-        )
-      })}
-    </div>
+            </div>
+          )
+
+          return (
+            <motion.div
+              key={action.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              {action.href ? (
+                <Link href={action.href} className="block h-full">
+                  {Content}
+                </Link>
+              ) : (
+                <button 
+                  onClick={() => handleActionClick(action.id)}
+                  className="w-full h-full text-left"
+                >
+                  {Content}
+                </button>
+              )}
+            </motion.div>
+          )
+        })}
+      </div>
+
+      <QuickOperationDialog
+        isOpen={!!opMode}
+        onClose={() => setOpMode(null)}
+        mode={opMode || "add"}
+      />
+
+      <QuickFindModal
+        isOpen={showFind}
+        onClose={() => setShowFind(false)}
+      />
+    </>
   )
 }

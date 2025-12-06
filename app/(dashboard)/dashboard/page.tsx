@@ -6,11 +6,11 @@ import { useQuery } from "@tanstack/react-query"
 import { StatusTicker } from "@/components/dashboard/StatusTicker"
 import { QuickActions } from "@/components/dashboard/QuickActions"
 import { AIInsightCard } from "@/components/dashboard/AIInsightCard"
-import { getGreeting } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/useAuth"
 import { 
   getIngredients, 
   getStockLogs, 
+  getPurchaseOrders,
   listenToInventoryWithStock,
   calculateStockStatus,
   type InventoryItem 
@@ -18,6 +18,14 @@ import {
 import { getAllUsers } from "@/lib/services"
 import { getMostCriticalForecast } from "@/lib/ai/forecast"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Truck } from "lucide-react"
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
 
 function formatTimeAgo(date: Date | string | any): string {
   try {
@@ -71,6 +79,12 @@ export default function DashboardPage() {
     queryFn: () => getAllUsers(),
   })
 
+  // Fetch active purchase orders for incoming deliveries
+  const { data: activeOrders = [] } = useQuery({
+    queryKey: ["dashboard-orders"],
+    queryFn: () => getPurchaseOrders('active'),
+  })
+
   // Real-time inventory listener
   useEffect(() => {
     const unsubscribe = listenToInventoryWithStock((inventoryData) => {
@@ -81,6 +95,27 @@ export default function DashboardPage() {
 
   // Calculate dashboard stats
   const totalItems = ingredients.length
+  
+  // Calculate incoming deliveries for today
+  const today = new Date()
+  const incomingDeliveries = activeOrders.filter(order => {
+    if (!order.expected_delivery_date) return false
+    
+    // Handle Firestore timestamp or Date object or string
+    let date: Date
+    if (order.expected_delivery_date instanceof Date) {
+      date = order.expected_delivery_date
+    } else if ((order.expected_delivery_date as any).toDate) {
+      date = (order.expected_delivery_date as any).toDate()
+    } else {
+      date = new Date(order.expected_delivery_date as any)
+    }
+    
+    return date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+  })
+
   const lowStockItems = inventory.filter(item => 
     item.status === 'low' || item.status === 'critical' || item.status === 'out'
   )
@@ -190,10 +225,28 @@ export default function DashboardPage() {
       </motion.div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          className="bg-card rounded-lg border p-4"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Truck className="h-4 w-4 text-primary" />
+            <p className="text-sm text-muted-foreground">Incoming Today</p>
+          </div>
+          <p className="text-2xl font-bold">{incomingDeliveries.length}</p>
+          {incomingDeliveries.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-1 truncate">
+              {incomingDeliveries.map(o => o.supplier_name).join(", ")}
+            </p>
+          )}
+        </motion.div>
+        
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
           className="bg-card rounded-lg border p-4"
         >
           <p className="text-sm text-muted-foreground">Total Items</p>

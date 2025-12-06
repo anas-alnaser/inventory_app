@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Search, Plus, Package, Trash2, AlertTriangle, Clock, ArrowUp, ArrowDown, Minus } from "lucide-react"
+import { Search, Plus, Package, Trash2, AlertTriangle, Clock, ArrowUp, ArrowDown, Minus, ShoppingCart } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -134,6 +135,7 @@ function InventoryCardSkeleton() {
 
 export default function InventoryPage() {
   const { userData, loading: authLoading } = useAuth()
+  const router = useRouter()
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
@@ -1023,6 +1025,18 @@ export default function InventoryPage() {
                             <Minus className="h-4 w-4 mr-1" />
                             Use
                           </Button>
+                          {item.status !== 'good' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => router.push(`/orders/new?supplierId=${item.ingredient.supplier_id}&ingredientId=${item.ingredient.id}`)}
+                              title="Reorder"
+                              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                            >
+                              <ShoppingCart className="h-4 w-4 mr-1" />
+                              Reorder
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1153,6 +1167,18 @@ export default function InventoryPage() {
                           <Minus className="h-4 w-4 mr-1" />
                           Use
                         </Button>
+                        {item.status !== 'good' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => router.push(`/orders/new?supplierId=${item.ingredient.supplier_id}&ingredientId=${item.ingredient.id}`)}
+                            title="Reorder"
+                            className="text-blue-600 dark:text-blue-400"
+                          >
+                            <ShoppingCart className="h-4 w-4 mr-1" />
+                            Reorder
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"

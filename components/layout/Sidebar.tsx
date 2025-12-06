@@ -53,6 +53,11 @@ const sidebarSections: SidebarSection[] = [
         badgeVariant: "warning",
       },
       {
+        href: "/orders",
+        label: "Orders",
+        icon: <Truck className="h-5 w-5" />,
+      },
+      {
         href: "/suppliers",
         label: "Suppliers",
         icon: <Truck className="h-5 w-5" />,
