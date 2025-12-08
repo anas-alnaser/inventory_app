@@ -102,6 +102,16 @@ export async function deleteIngredient(id: string): Promise<void> {
   await deleteDoc(docRef);
 }
 
+export async function getIngredientsBySupplier(supplierId: string): Promise<Ingredient[]> {
+  const q = query(ingredientsRef, where('supplier_id', '==', supplierId), orderBy('name'));
+  const snapshot = await getDocs(q);
+  console.log('Querying ingredients for supplier_id:', supplierId, 'Found:', snapshot.size);
+  return snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() as object),
+  })) as Ingredient[];
+}
+
 // Enhanced ingredient creation with unit conversion support
 export interface CreateIngredientWithUnitData extends CreateIngredientData {
   purchaseUnit?: string; // e.g., "Sack"
@@ -144,12 +154,24 @@ export async function getSuppliers(): Promise<Supplier[]> {
 }
 
 export async function getSupplierById(id: string): Promise<Supplier | null> {
-  const docRef = doc(suppliersRef, id);
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) {
-    return { id: docSnap.id, ...(docSnap.data() as object) } as Supplier;
+  console.log(`[DEBUG] Attempting to fetch: suppliers/${id}`);
+  try {
+    // Ensure we are accessing the 'suppliers' collection (plural)
+    const docRef = doc(db, "suppliers", id);
+    const docSnap = await getDoc(docRef);
+    
+    console.log(`[DEBUG] Snapshot exists?`, docSnap.exists());
+    
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() } as Supplier;
+    } else {
+      console.error("No supplier found with ID:", id);
+      return null;
+    }
+  } catch (error) {
+    console.error("[DEBUG] Firestore Error:", error);
+    return null;
   }
-  return null;
 }
 
 export async function createSupplier(data: CreateSupplierData): Promise<string> {
@@ -448,6 +470,24 @@ export async function getPurchaseOrderById(id: string): Promise<PurchaseOrder | 
   return null;
 }
 
+export async function getPurchaseOrdersBySupplier(supplierId: string): Promise<PurchaseOrder[]> {
+  const q = query(
+    purchaseOrdersRef, 
+    where('supplier_id', '==', supplierId),
+    orderBy('created_at', 'desc')
+  );
+  const snapshot = await getDocs(q);
+  console.log('Querying orders for supplier_id:', supplierId, 'Found:', snapshot.size);
+  return snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() as object),
+  })) as PurchaseOrder[];
+}
+
+export async function getOrdersBySupplier(supplierId: string): Promise<PurchaseOrder[]> {
+    return getPurchaseOrdersBySupplier(supplierId);
+}
+
 export async function updatePurchaseOrder(
   id: string, 
   data: Partial<CreatePurchaseOrderData>
@@ -492,33 +532,47 @@ export async function receivePurchaseOrder(id: string, userId: string): Promise<
   }
 
   await runTransaction(db, async (transaction) => {
+    // 1. READ ALL DATA FIRST
     const poDoc = await transaction.get(poRef);
     if (!poDoc.exists()) throw new Error("PO not found");
     const currentPo = poDoc.data() as PurchaseOrder;
     if (currentPo.status === 'received') throw new Error("Already received");
 
+    // Read all stock documents
+    const stockDocs = new Map<string, any>();
+    for (const item of currentPo.items) {
+      const stockId = stockMap.get(item.ingredient_id);
+      if (stockId) {
+        const stockRef = doc(ingredientStockRef, stockId);
+        const stockDoc = await transaction.get(stockRef);
+        stockDocs.set(stockId, stockDoc);
+      }
+    }
+
+    // 2. WRITE ALL DATA
     // Update PO
     transaction.update(poRef, {
       status: 'received',
       updated_at: serverTimestamp(),
     });
 
-    // Update Stocks
+    // Update Stocks and Create Logs
     for (const item of currentPo.items) {
       const baseQuantity = toBaseUnit(item.quantity, item.unit);
       const stockId = stockMap.get(item.ingredient_id);
 
       if (stockId) {
         const stockRef = doc(ingredientStockRef, stockId);
-        const stockDoc = await transaction.get(stockRef);
-        const currentStock = stockDoc.data()?.quantity || 0;
+        // Use the pre-read document
+        const stockDoc = stockDocs.get(stockId);
+        const currentStock = stockDoc?.data()?.quantity || 0;
         
         transaction.update(stockRef, {
           quantity: currentStock + baseQuantity,
           last_updated: serverTimestamp(),
         });
       } else {
-        const newStockRef = doc(ingredientStockRef);
+        const newStockRef = doc(ingredientStockRef); // Auto-ID for new stock
         transaction.set(newStockRef, {
           ingredient_id: item.ingredient_id,
           quantity: baseQuantity,

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
@@ -93,6 +94,7 @@ function SupplierCardSkeleton() {
 }
 
 export default function SuppliersPage() {
+  const router = useRouter()
   const { userData } = useAuth()
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState("")
@@ -344,7 +346,7 @@ export default function SuppliersPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
             >
-              <Card className="h-full hover:shadow-md transition-shadow">
+              <Card className="h-full flex flex-col hover:shadow-md transition-shadow">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -367,6 +369,14 @@ export default function SuppliersPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => {
+                          console.log("Navigating to supplier:", supplier.id, supplier.name);
+                          if (supplier.id) router.push(`/suppliers/${supplier.id}`);
+                          else console.error("Supplier ID is missing!");
+                        }}>
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          View Profile
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleEmail(supplier.email)}>
                           <Mail className="mr-2 h-4 w-4" />
                           Send Email
@@ -384,9 +394,9 @@ export default function SuppliersPage() {
                     </DropdownMenu>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 flex-1 flex flex-col">
                   {/* Contact Info */}
-                  <div className="space-y-2 text-sm">
+                  <div className="space-y-2 text-sm flex-1">
                     <button
                       onClick={() => handleCall(supplier.phone, supplier.name)}
                       className="flex items-center gap-2 text-foreground hover:text-primary transition-colors w-full"
@@ -427,7 +437,7 @@ export default function SuppliersPage() {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex gap-2 pt-2 mt-auto">
                     <Button
                       variant="outline"
                       size="sm"

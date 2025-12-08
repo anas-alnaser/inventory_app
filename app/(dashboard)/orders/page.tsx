@@ -13,7 +13,8 @@ import {
   FileText, 
   CheckCircle2, 
   XCircle, 
-  Clock
+  Clock,
+  Filter
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 
@@ -22,6 +23,13 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -38,6 +46,7 @@ import type { PurchaseOrder } from "@/types/entities"
 export default function OrdersPage() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
 
   // Fetch all orders - services.ts modified to return all regardless of param
   const { data: allOrders = [], isLoading } = useQuery({
@@ -57,10 +66,14 @@ export default function OrdersPage() {
   // Actually, user said "Show ALL orders for now". 
   // Let's treat the "active" tab as "All Orders" effectively for this debugging phase.
 
-  const filteredOrders = allOrders.filter(order => 
-    order.po_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  const filteredOrders = allOrders.filter(order => {
+    const matchesSearch = order.po_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
     order.supplier_name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+    
+    const matchesStatus = statusFilter === "all" || order.status === statusFilter
+
+    return matchesSearch && matchesStatus
+  })
 
   return (
     <div className="px-4 py-6 md:px-6 lg:px-8 space-y-6">
@@ -85,6 +98,21 @@ export default function OrdersPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+             <div className="flex items-center gap-2">
+               <Filter className="h-4 w-4 text-muted-foreground" />
+               <SelectValue placeholder="Filter by Status" />
+             </div>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="draft">Draft</SelectItem>
+            <SelectItem value="ordered">Ordered</SelectItem>
+            <SelectItem value="received">Received</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading ? (

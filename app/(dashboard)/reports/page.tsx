@@ -82,6 +82,9 @@ export default function ReportsPage() {
     let totalWasteValue = 0
     let totalWasteCount = 0
     let netUsageCount = 0
+    let consumptionCost = 0
+    let wasteCost = 0
+    let otherCost = 0
 
     const ingredientMap = new Map<string, Ingredient>(
       ingredients.map(i => [i.id, i])
@@ -94,18 +97,22 @@ export default function ReportsPage() {
       
       if (log.reason === 'purchase') {
         totalSpend += amount * cost
-      } else if (log.reason === 'waste' || log.reason === 'expired') {
-        totalWasteValue += amount * cost
+      } else if (log.reason === 'waste') {
+        wasteCost += amount * cost
         totalWasteCount += amount
-      } else if (log.change_amount < 0) {
-        // Usage (sale, production, etc.)
+      } else if (log.reason === 'expired' || log.reason === 'other') {
+        otherCost += amount * cost
+      } else if (log.reason === 'consumption' || log.reason === 'sale' || log.reason === 'production') {
+        consumptionCost += amount * cost
         netUsageCount += 1 // Counting transactions
       }
     })
 
     return {
       totalSpend,
-      totalWasteValue,
+      wasteCost,
+      otherCost,
+      consumptionCost,
       totalWasteCount,
       netUsageCount
     }
@@ -179,7 +186,7 @@ export default function ReportsPage() {
         const amount = Math.abs(log.change_amount)
         if (log.reason === 'waste') reasons.waste += amount
         else if (log.reason === 'expired') reasons.expired += amount
-        else if (log.reason === 'adjustment') reasons.adjustment += amount
+        else if (log.reason === 'adjustment' || log.reason === 'other') reasons.adjustment += amount
         else reasons.consumption += amount // sale, production, etc.
       }
     })
@@ -208,25 +215,32 @@ export default function ReportsPage() {
       </motion.div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatsCard
+          title="Consumption"
+          value={`${stats?.consumptionCost.toFixed(2)} JOD`}
+          icon={<TrendingUp className="h-4 w-4 text-primary" />}
+          description="Cost of goods sold/used"
+        />
+        <StatsCard
+          title="Waste"
+          value={`${stats?.wasteCost.toFixed(2)} JOD`}
+          icon={<AlertTriangle className="h-4 w-4 text-destructive" />}
+          description="Total waste cost"
+          className="border-destructive/20 bg-destructive/5"
+        />
+        <StatsCard
+          title="Other/Expired"
+          value={`${stats?.otherCost.toFixed(2)} JOD`}
+          icon={<Package className="h-4 w-4 text-warning" />}
+          description="Expired or other losses"
+          className="border-warning/20 bg-warning/5"
+        />
         <StatsCard
           title="Total Spend"
           value={`${stats?.totalSpend.toFixed(2)} JOD`}
           icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
-          description="Cost of purchased stock"
-        />
-        <StatsCard
-          title="Total Waste"
-          value={`${stats?.totalWasteValue.toFixed(2)} JOD`}
-          icon={<AlertTriangle className="h-4 w-4 text-destructive" />}
-          description={`${stats?.totalWasteCount.toFixed(0)} units wasted`}
-          className="border-destructive/20 bg-destructive/5"
-        />
-        <StatsCard
-          title="Net Usage Transactions"
-          value={stats?.netUsageCount.toString() || "0"}
-          icon={<TrendingUp className="h-4 w-4 text-success" />}
-          description="Total usage events recorded"
+          description="New stock purchases"
         />
       </div>
 

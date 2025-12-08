@@ -18,3 +18,14 @@ export function formatRelativeTime(date: any): string {
     return 'Unknown';
   }
 }
+
+export function formatCurrency(amount: number | string): string {
+  const value = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(value)) return '0.00 JOD';
+  
+  return new Intl.NumberFormat('en-JO', {
+    style: 'currency',
+    currency: 'JOD',
+    minimumFractionDigits: 2
+  }).format(value);
+}

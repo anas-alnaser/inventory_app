@@ -3,22 +3,29 @@
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { useQuery } from "@tanstack/react-query"
-import { StatusTicker } from "@/components/dashboard/StatusTicker"
 import { QuickActions } from "@/components/dashboard/QuickActions"
+import { QuickOperationDialog } from "@/components/dashboard/QuickOperationDialog"
 import { AIInsightCard } from "@/components/dashboard/AIInsightCard"
 import { useAuth } from "@/lib/hooks/useAuth"
+import { Button } from "@/components/ui/button"
 import { 
   getIngredients, 
   getStockLogs, 
   getPurchaseOrders,
   listenToInventoryWithStock,
-  calculateStockStatus,
   type InventoryItem 
 } from "@/lib/services"
 import { getAllUsers } from "@/lib/services"
 import { getMostCriticalForecast } from "@/lib/ai/forecast"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Truck } from "lucide-react"
+import { 
+  Truck, 
+  AlertTriangle, 
+  DollarSign, 
+  Package, 
+  CheckCircle2, 
+  Archive
+} from "lucide-react"
+import { cn } from "@/lib/utils"
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -60,6 +67,7 @@ export default function DashboardPage() {
   const { userData } = useAuth()
   const greeting = getGreeting()
   const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [restockId, setRestockId] = useState<string | null>(null)
 
   // Fetch ingredients count
   const { data: ingredients = [] } = useQuery({
@@ -116,53 +124,23 @@ export default function DashboardPage() {
       date.getFullYear() === today.getFullYear()
   })
 
-  const lowStockItems = inventory.filter(item => 
-    item.status === 'low' || item.status === 'critical' || item.status === 'out'
-  )
-  const outOfStockItems = inventory.filter(item => item.status === 'out')
-  const criticalItems = inventory.filter(item => item.status === 'critical')
+  const uniqueSuppliers = new Set(incomingDeliveries.map(o => o.supplier_name)).size
+
+  const lowStockItems = inventory.filter(item => {
+    const minLevel = item.ingredient.min_stock_level || 0
+    // Only include items that are low but NOT out of stock
+    return item.stock?.quantity! > 0 && item.stock?.quantity! <= minLevel
+  })
+  const outOfStockItems = inventory.filter(item => (item.stock?.quantity || 0) <= 0)
   
   const totalValue = inventory.reduce((sum, item) => {
     const stockQuantity = item.stock?.quantity || 0
     const costPerUnit = item.ingredient.cost_per_unit || 0
-    // Convert stock quantity back to display units for calculation
-    // For simplicity, we'll use the base unit cost
     return sum + (stockQuantity * costPerUnit)
   }, 0)
 
-  // Build status items from real data
-  const statusItems = []
-  
-  if (outOfStockItems.length > 0) {
-    const itemNames = outOfStockItems.slice(0, 3).map(item => item.ingredient.name).join(", ")
-    statusItems.push({
-      id: "out-of-stock",
-      type: "critical" as const,
-      title: "Out of Stock",
-      description: itemNames || `${outOfStockItems.length} items`,
-      count: outOfStockItems.length,
-    })
-  }
-
-  if (criticalItems.length > 0) {
-    statusItems.push({
-      id: "critical",
-      type: "warning" as const,
-      title: "Critical Stock",
-      description: `${criticalItems.length} items need immediate attention`,
-      count: criticalItems.length,
-    })
-  }
-
-  if (lowStockItems.length > 0 && outOfStockItems.length === 0) {
-    statusItems.push({
-      id: "low-stock",
-      type: "warning" as const,
-      title: "Low Stock",
-      description: `${lowStockItems.length} items below minimum level`,
-      count: lowStockItems.length,
-    })
-  }
+  // Needs Attention items (Out of Stock + Low Stock)
+  const needsAttentionItems = [...outOfStockItems, ...lowStockItems]
 
   // Format recent activity from stock logs
   const recentActivity = recentLogs.map((log) => {
@@ -199,7 +177,7 @@ export default function DashboardPage() {
       id: criticalForecast.ingredientId,
       type: "forecast" as const,
       title: `${criticalForecast.ingredientName} Running Low`,
-      description: `AI predicts you will run out of ${criticalForecast.ingredientName} by ${criticalForecast.predictedRunOutDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || 'soon'}. ${criticalForecast.recommendedReorderAmount ? `Consider ordering ${criticalForecast.recommendedReorderAmount.toFixed(0)} ${ingredients.find(i => i.id === criticalForecast.ingredientId)?.unit || 'units'} to maintain optimal stock levels.` : 'Consider reordering soon.'}`,
+      description: `AI predicts you will run out of ${criticalForecast.ingredientName} by ${criticalForecast.predictedRunOutDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) || 'soon'}.`,
       action: {
         label: "View Forecasts",
         href: "/forecasts",
@@ -209,7 +187,7 @@ export default function DashboardPage() {
   ] : []
 
   return (
-    <div className="px-4 py-6 md:px-6 lg:px-8 space-y-6">
+    <div className="px-4 py-6 md:px-6 lg:px-8 space-y-8 pb-20">
       {/* Welcome Section */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -224,142 +202,300 @@ export default function DashboardPage() {
         </p>
       </motion.div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Top KPI Cards (Hero) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Total Value - Star Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-card rounded-lg border p-4"
+          className="relative overflow-hidden rounded-xl border border-cyan-500/30 bg-gradient-to-br from-card to-cyan-950/20 p-6 shadow-[0_0_20px_rgba(8,145,178,0.1)]"
         >
-          <div className="flex items-center gap-2 mb-2">
-            <Truck className="h-4 w-4 text-primary" />
-            <p className="text-sm text-muted-foreground">Incoming Today</p>
+          <div className="relative z-10">
+            <p className="text-sm font-medium text-cyan-500 mb-1">Total Inventory Value</p>
+            <h3 className="text-3xl font-bold tracking-tight text-foreground">
+              {totalValue.toLocaleString('en-US', { style: 'currency', currency: 'JOD' })}
+            </h3>
           </div>
-          <p className="text-2xl font-bold">{incomingDeliveries.length}</p>
-          {incomingDeliveries.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-1 truncate">
-              {incomingDeliveries.map(o => o.supplier_name).join(", ")}
+          <DollarSign className="absolute -bottom-4 -right-4 h-32 w-32 text-cyan-500/5 rotate-12" />
+        </motion.div>
+
+        {/* Incoming Today */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card to-muted p-6"
+        >
+          <div className="relative z-10">
+            <p className="text-sm font-medium text-muted-foreground mb-1">Incoming Today</p>
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-3xl font-bold tracking-tight text-foreground">
+                {incomingDeliveries.length}
+              </h3>
+              <span className="text-sm text-muted-foreground">deliveries</span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              {uniqueSuppliers > 0 
+                ? `${uniqueSuppliers} Supplier${uniqueSuppliers !== 1 ? 's' : ''} arriving`
+                : 'No deliveries expected'
+              }
             </p>
-          )}
+          </div>
+          <Truck className="absolute -bottom-4 -right-4 h-32 w-32 text-primary/5 rotate-12" />
         </motion.div>
-        
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-card rounded-lg border p-4"
-        >
-          <p className="text-sm text-muted-foreground">Total Items</p>
-          <p className="text-2xl font-bold">{totalItems}</p>
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-card rounded-lg border p-4"
-        >
-          <p className="text-sm text-muted-foreground">Low Stock</p>
-          <p className="text-2xl font-bold text-warning">{lowStockItems.length}</p>
-        </motion.div>
+
+        {/* Total Items */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-card rounded-lg border p-4"
+          className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card to-muted p-6"
         >
-          <p className="text-sm text-muted-foreground">Total Value</p>
-          <p className="text-2xl font-bold">{totalValue.toFixed(2)} JOD</p>
+          <div className="relative z-10">
+            <p className="text-sm font-medium text-muted-foreground mb-1">Total Items</p>
+            <h3 className="text-3xl font-bold tracking-tight text-foreground">
+              {totalItems}
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Active ingredients
+            </p>
+          </div>
+          <Package className="absolute -bottom-4 -right-4 h-32 w-32 text-primary/5 rotate-12" />
         </motion.div>
       </div>
 
-      {/* Status Ticker */}
-      <section>
-        <motion.h2
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3"
+      {/* Stock Alert Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Out of Stock - Red */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="rounded-xl border border-red-500/20 bg-red-500/5 p-5"
         >
-          Needs Attention
-        </motion.h2>
-        {statusItems.length > 0 ? (
-          <StatusTicker items={statusItems} />
-        ) : (
-          <div className="bg-card rounded-lg border p-4 text-center text-muted-foreground">
-            All items are well stocked! 🎉
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-full bg-red-500/10">
+                <AlertTriangle className="h-5 w-5 text-red-500" />
+              </div>
+              <h3 className="font-semibold text-red-500">Out of Stock</h3>
+            </div>
+            <span className="text-2xl font-bold text-red-500 tracking-tight">
+              {outOfStockItems.length}
+            </span>
           </div>
-        )}
-      </section>
+          
+          {outOfStockItems.length > 0 ? (
+            <div className="space-y-3">
+              <div className="max-h-[120px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                {outOfStockItems.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between p-2 rounded-md bg-background/50 border border-red-500/10">
+                    <span className="text-sm font-medium truncate flex-1 mr-2">{item.ingredient.name}</span>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                      onClick={() => setRestockId(item.id)}
+                    >
+                      Restock
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-muted-foreground py-2">
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+              <span className="text-sm">All clear, fully stocked.</span>
+            </div>
+          )}
+        </motion.div>
+
+        {/* Low Stock - Amber */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-5"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-full bg-yellow-500/10">
+                <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              </div>
+              <h3 className="font-semibold text-yellow-500">Low Stock</h3>
+            </div>
+            <span className="text-2xl font-bold text-yellow-500 tracking-tight">
+              {lowStockItems.length}
+            </span>
+          </div>
+
+          {lowStockItems.length > 0 ? (
+            <div className="space-y-3">
+              <div className="max-h-[120px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                {lowStockItems.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between p-2 rounded-md bg-background/50 border border-yellow-500/10">
+                    <div className="flex flex-col overflow-hidden mr-2">
+                      <span className="text-sm font-medium truncate">{item.ingredient.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {item.stock?.quantity} {item.ingredient.unit} left
+                      </span>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="h-7 text-xs text-yellow-500 hover:text-yellow-600 hover:bg-yellow-500/10"
+                      onClick={() => setRestockId(item.id)}
+                    >
+                      Restock
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-muted-foreground py-2">
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+              <span className="text-sm">Stock levels look good.</span>
+            </div>
+          )}
+        </motion.div>
+      </div>
+
+      {/* Needs Attention Section (Mini Cards) */}
+      {needsAttentionItems.length > 0 && (
+        <section className="space-y-3">
+           <motion.h2
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="text-sm font-semibold text-muted-foreground uppercase tracking-wider pl-1"
+          >
+            Needs Attention
+          </motion.h2>
+          
+          <div className="flex overflow-x-auto gap-4 pb-4 -mx-4 px-4 md:mx-0 md:px-0 custom-scrollbar scroll-smooth">
+            {needsAttentionItems.map((item, idx) => (
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.5 + idx * 0.05 }}
+                className="flex-shrink-0 w-[180px] bg-card rounded-lg border p-4 shadow-sm hover:shadow-md transition-shadow"
+              >
+                <div className="flex flex-col h-full justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold truncate text-sm mb-1" title={item.ingredient.name}>
+                      {item.ingredient.name}
+                    </h4>
+                    <p className={cn(
+                      "text-xs font-medium",
+                      (item.stock?.quantity || 0) <= 0 ? "text-red-500" : "text-yellow-500"
+                    )}>
+                      {(item.stock?.quantity || 0) <= 0 ? "Out of Stock" : `${item.stock?.quantity} ${item.ingredient.unit} left`}
+                    </p>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    className="w-full h-8 text-xs"
+                    onClick={() => setRestockId(item.id)}
+                  >
+                    Order
+                  </Button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Quick Actions */}
-      <section>
+      <section className="space-y-3">
         <motion.h2
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3"
+          transition={{ delay: 0.6 }}
+          className="text-sm font-semibold text-muted-foreground uppercase tracking-wider pl-1"
         >
           Quick Actions
         </motion.h2>
         <QuickActions />
       </section>
 
-      {/* AI Insights */}
-      <section>
-        <motion.h2
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3"
-        >
-          AI Insights
-        </motion.h2>
-        <AIInsightCard 
-          insights={aiInsights} 
-          isLoading={forecastLoading}
-          isEligible={aiInsights.length > 0 || !forecastLoading} 
-        />
-      </section>
+      {/* AI Insights & Recent Activity Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* AI Insights */}
+        <section className="space-y-3">
+          <motion.h2
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.7 }}
+            className="text-sm font-semibold text-muted-foreground uppercase tracking-wider pl-1"
+          >
+            AI Insights
+          </motion.h2>
+          <AIInsightCard 
+            insights={aiInsights} 
+            isLoading={forecastLoading}
+            isEligible={aiInsights.length > 0 || !forecastLoading} 
+          />
+        </section>
 
-      {/* Recent Activity */}
-      <section>
-        <motion.h2
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3"
-        >
-          Recent Activity
-        </motion.h2>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="bg-card rounded-lg border p-4 space-y-3"
-        >
-          {recentActivity.length > 0 ? (
-            recentActivity.map((activity, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between py-2 border-b border-border last:border-0"
-              >
-                <div>
-                  <p className="font-medium text-foreground">{activity.action}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {activity.item} by {activity.user}
-                  </p>
+        {/* Recent Activity */}
+        <section className="space-y-3">
+          <motion.h2
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.8 }}
+            className="text-sm font-semibold text-muted-foreground uppercase tracking-wider pl-1"
+          >
+            Recent Activity
+          </motion.h2>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.9 }}
+            className="bg-card rounded-xl border p-4 space-y-1 h-full min-h-[160px]"
+          >
+            {recentActivity.length > 0 ? (
+              recentActivity.map((activity, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between py-3 border-b border-border/50 last:border-0 last:pb-0"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "p-2 rounded-full",
+                      activity.action === "Stock Added" ? "bg-green-500/10 text-green-500" : "bg-orange-500/10 text-orange-500"
+                    )}>
+                      {activity.action === "Stock Added" ? <Archive className="h-4 w-4" /> : <Package className="h-4 w-4" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{activity.item}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {activity.action} by {activity.user}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{activity.time}</span>
                 </div>
-                <span className="text-xs text-muted-foreground">{activity.time}</span>
+              ))
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground py-8">
+                <Archive className="h-8 w-8 mb-2 opacity-20" />
+                <p className="text-sm">No recent activity</p>
               </div>
-            ))
-          ) : (
-            <div className="text-center text-muted-foreground py-4">
-              No recent activity
-            </div>
-          )}
-        </motion.div>
-      </section>
+            )}
+          </motion.div>
+        </section>
+      </div>
+
+      <QuickOperationDialog
+        isOpen={!!restockId}
+        onClose={() => setRestockId(null)}
+        mode="add"
+        preselectedIngredientId={restockId || undefined}
+      />
     </div>
   )
 }
-
