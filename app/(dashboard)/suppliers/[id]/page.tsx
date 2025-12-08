@@ -241,6 +241,8 @@ export default function SupplierDetailsPage() {
          date = new Date(); // Fallback
       }
 
+      if (!date) return acc;
+
       const monthKey = format(date, "MMM yyyy")
       
       if (!acc[monthKey]) {
