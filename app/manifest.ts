@@ -13,16 +13,14 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: '/',
     icons: [
       {
-        src: '/icon.svg',
-        sizes: '192x192',
-        type: 'image/svg+xml',
-        purpose: 'any',
+        src: '/icon',
+        sizes: 'any',
+        type: 'image/png',
       },
       {
-        src: '/icon.svg',
-        sizes: '512x512',
-        type: 'image/svg+xml',
-        purpose: 'any',
+        src: '/apple-icon',
+        sizes: 'any',
+        type: 'image/png',
       },
     ],
     categories: ['business', 'productivity', 'food'],
