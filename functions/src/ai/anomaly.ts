@@ -9,6 +9,7 @@ import {
   Anomaly,
   AnomalySeverity 
 } from '../config/firestore';
+import * as admin from 'firebase-admin';
 import { generateAnomalyRecommendation } from '../config/gemini';
 
 /**
@@ -62,7 +63,7 @@ async function getDailyUsage(
   
   const dailyUsage = new Map<string, number>();
   
-  logsSnapshot.docs.forEach(doc => {
+  logsSnapshot.docs.forEach((doc: admin.firestore.QueryDocumentSnapshot) => {
     const log = doc.data() as StockLog;
     // Only count negative changes (usage)
     if (log.change_amount < 0) {
@@ -363,7 +364,7 @@ export async function calculateTheoreticalUsage(
   const menuItemsSnapshot = await collections.menuItems.get();
   const menuItems = new Map<string, { name: string; recipe?: { ingredientId: string; quantity: number }[] }>();
   
-  menuItemsSnapshot.docs.forEach(doc => {
+  menuItemsSnapshot.docs.forEach((doc: admin.firestore.QueryDocumentSnapshot) => {
     const item = doc.data();
     menuItems.set(doc.id, {
       name: item.name,
@@ -419,7 +420,7 @@ export async function detectTheoreticalVariance(
     .where('created_at', '<=', Timestamp.fromDate(endDate))
     .get();
   
-  logsSnapshot.docs.forEach(doc => {
+  logsSnapshot.docs.forEach((doc: admin.firestore.QueryDocumentSnapshot) => {
     const log = doc.data() as StockLog;
     if (log.change_amount < 0) {
       const current = actualUsage.get(log.ingredient_id) || 0;
@@ -430,7 +431,7 @@ export async function detectTheoreticalVariance(
   // Compare theoretical vs actual
   const ingredientsSnapshot = await collections.ingredients.get();
   const ingredients = new Map<string, Ingredient>();
-  ingredientsSnapshot.docs.forEach(doc => {
+  ingredientsSnapshot.docs.forEach((doc: admin.firestore.QueryDocumentSnapshot) => {
     ingredients.set(doc.id, { id: doc.id, ...doc.data() } as Ingredient);
   });
   
