@@ -1,33 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background - Deep Slate -->
+  <rect width="512" height="512" rx="112" fill="#0F172A"/>
+  
+  <!-- Three vertical bars arranged in wave-like pattern -->
+  <!-- Left bar (shortest) - positioned lower to create wave effect -->
+  <rect x="140" y="300" width="50" height="100" rx="25" fill="url(#gradient)"/>
+  
+  <!-- Middle bar (medium) - positioned mid-height -->
+  <rect x="226" y="250" width="50" height="150" rx="25" fill="url(#gradient)"/>
+  
+  <!-- Right bar (tallest) - positioned highest -->
+  <rect x="312" y="180" width="50" height="220" rx="25" fill="url(#gradient)"/>
+  
+  <!-- Gradient definition: Cyan (#06B6D4) to Royal Blue (#1E40AF) -->
   <defs>
-    <linearGradient id="stockwaveGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:1" />
-      <stop offset="50%" style="stop-color:#0891b2;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0e7490;stop-opacity:1" />
+    <linearGradient id="gradient" x1="0%" y1="100%" x2="0%" y2="0%" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#1E40AF"/>
     </linearGradient>
   </defs>
-  
-  <!-- Three vertical bars of increasing height -->
-  <!-- Left bar (shortest) -->
-  <rect x="50" y="100" width="25" height="50" rx="4" fill="url(#stockwaveGradient)"/>
-  
-  <!-- Middle bar (medium) -->
-  <rect x="87.5" y="70" width="25" height="80" rx="4" fill="url(#stockwaveGradient)"/>
-  
-  <!-- Right bar (tallest) -->
-  <rect x="125" y="40" width="25" height="110" rx="4" fill="url(#stockwaveGradient)"/>
-  
-  <!-- Wavy base connecting the bars - smooth organic wave -->
-  <path d="M 50 150 
-           Q 55 145, 62.5 147.5
-           Q 70 150, 75 148
-           Q 80 146, 87.5 150
-           Q 95 154, 100 152
-           Q 105 150, 112.5 153
-           Q 120 156, 125 154
-           Q 130 152, 137.5 155
-           Q 145 158, 150 156
-           L 150 200
-           L 50 200 Z" 
-        fill="url(#stockwaveGradient)"/>
 </svg>

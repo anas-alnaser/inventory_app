@@ -46,10 +46,14 @@ service cloud.firestore {
         request.auth.uid == userId || 
         isAdminOrOwner()
       );
-      // Users can update their own profile, Admin/Owner can update any
+      // Users can update their own profile, BUT cannot change the role field
+      // Only Admin/Owner can modify the role field
+      // Admin/Owner can update any user
       allow update: if isAuthenticated() && (
-        request.auth.uid == userId || 
-        isAdminOrOwner()
+        isAdminOrOwner() ||
+        (request.auth.uid == userId && 
+         (!('role' in request.resource.data) || 
+          request.resource.data.role == resource.data.role))
       );
       // Only Admin/Owner can delete users
       allow delete: if isAdminOrOwner();
@@ -80,7 +84,12 @@ service cloud.firestore {
       // All authenticated users can read
       allow read: if isAuthenticated();
       // Stock keepers and above can create/update
-      allow create, update: if canManageStock();
+      // Validate that quantity is a number
+      allow create: if canManageStock() && 
+        request.resource.data.quantity is number;
+      allow update: if canManageStock() && 
+        (request.resource.data.quantity == resource.data.quantity ||
+         (request.resource.data.quantity is number));
       // Only Admin/Owner can delete
       allow delete: if isAdminOrOwner();
     }

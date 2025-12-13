@@ -37,7 +37,7 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginForm) => {
     const result = await signIn(data)
-    
+
     if (result.success) {
       toast({
         title: "Welcome back!",
@@ -62,9 +62,9 @@ export default function LoginPage() {
     >
       {/* Mobile Logo */}
       <div className="flex lg:hidden items-center justify-center gap-2 mb-8">
-        <img 
-          src="/icon.svg" 
-          alt="StockWave" 
+        <img
+          src="/icon.svg"
+          alt="StockWave"
           className="h-10 w-10 rounded-lg object-contain"
         />
         <span className="text-xl font-bold text-foreground">StockWave</span>

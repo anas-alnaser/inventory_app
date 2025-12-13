@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Search, Plus, Package, Trash2, AlertTriangle, Clock, ArrowUp, ArrowDown, Minus, ShoppingCart } from "lucide-react"
+import { Search, Plus, Package, Trash2, AlertTriangle, Clock, ArrowUp, ArrowDown, Minus, ShoppingCart, Camera } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -62,38 +62,19 @@ import {
   listenToInventoryWithStock,
   addStock,
   deleteIngredient,
-  getSuppliers,
-  createIngredient,
   getStockLogsByIngredient,
   getAllUsers,
-  updateStockTransaction,
-  type CreateIngredientData,
 } from "@/lib/services"
+import { CreateIngredientDialog } from "@/components/inventory/CreateIngredientDialog"
+import { LogUsageDialog } from "@/components/inventory/LogUsageDialog"
 import type { StockLog } from "@/types/entities"
 import type { InventoryItem } from "@/lib/services"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-
-const ingredientFormSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  category: z.string().min(1, "Category is required"),
-  supplier_id: z.string().min(1, "Supplier is required"),
-  purchase_unit: z.string().min(1, "Purchase unit is required"), // e.g., "Sack"
-  purchase_size: z.number().min(0.01, "Purchase size must be positive"), // e.g., 1000
-  base_unit: z.enum(["g", "kg", "mL", "L", "piece", "box", "pack"]),
-  cost_per_purchase_unit: z.number().min(0, "Cost must be positive"),
-  min_stock_level: z.number().min(0).optional(),
-  max_stock_level: z.number().min(0).optional(),
-})
-
-type IngredientFormData = z.infer<typeof ingredientFormSchema>
 
 const statusConfig = {
-  good: { label: "In Stock", variant: "default" as const, color: "text-success" },
-  low: { label: "Low Stock", variant: "warning" as const, color: "text-warning" },
-  critical: { label: "Critical", variant: "destructive" as const, color: "text-destructive" },
-  out: { label: "Out of Stock", variant: "destructive" as const, color: "text-destructive" },
+  good: { label: "In Stock", className: "bg-emerald-500 text-white border-transparent whitespace-nowrap w-[110px] text-center" },
+  low: { label: "Low Stock", className: "bg-amber-500 text-white border-transparent whitespace-nowrap w-[110px] text-center" },
+  critical: { label: "Critical", className: "bg-red-500 text-white border-transparent whitespace-nowrap w-[110px] text-center" },
+  out: { label: "Out of Stock", className: "bg-red-500 text-white border-transparent whitespace-nowrap w-[110px] text-center" },
 }
 
 function InventoryTableSkeleton() {
@@ -146,10 +127,6 @@ export default function InventoryPage() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
   const [stockQuantity, setStockQuantity] = useState(0)
   const [stockUnit, setStockUnit] = useState("kg")
-  const [usageQuantity, setUsageQuantity] = useState(0)
-  const [usageUnit, setUsageUnit] = useState("kg")
-  const [usageBaseQuantity, setUsageBaseQuantity] = useState(0)
-  const [usageReason, setUsageReason] = useState<"consumption" | "waste" | "expired" | "correction">("consumption")
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [selectedIngredientForHistory, setSelectedIngredientForHistory] = useState<InventoryItem | null>(null)
@@ -158,17 +135,6 @@ export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
-
-  const {
-    register: registerIngredient,
-    handleSubmit: handleSubmitIngredient,
-    formState: { errors: ingredientErrors },
-    reset: resetIngredient,
-    setValue: setIngredientValue,
-    watch: watchIngredient,
-  } = useForm<IngredientFormData>({
-    resolver: zodResolver(ingredientFormSchema),
-  })
 
   // Real-time listener for inventory data
   useEffect(() => {
@@ -194,12 +160,6 @@ export default function InventoryPage() {
       unsubscribe()
     }
   }, [authLoading])
-
-  // Fetch suppliers for dropdown
-  const { data: suppliers = [] } = useQuery({
-    queryKey: ["suppliers"],
-    queryFn: () => getSuppliers(),
-  })
 
   // Fetch users for displaying names in logs
   const { data: users = [] } = useQuery({
@@ -258,84 +218,6 @@ export default function InventoryPage() {
       toast({
         title: "Error",
         description: error.message || "Failed to add stock",
-        variant: "destructive",
-      })
-    },
-  })
-
-  // Log usage mutation
-  const logUsageMutation = useMutation({
-    mutationFn: async (data: {
-      ingredient_id: string
-      baseQuantity: number
-      reason: "consumption" | "waste" | "expired" | "correction"
-    }) => {
-      if (!userData?.id) {
-        throw new Error("User must be logged in")
-      }
-      
-      return updateStockTransaction(
-        data.ingredient_id,
-        -data.baseQuantity, // Negative to deduct
-        userData.id,
-        data.reason as any,
-        `Logged usage: ${data.reason}`
-      )
-    },
-    onSuccess: () => {
-      // Real-time listener will update automatically
-      toast({
-        title: "Usage Logged",
-        description: `Successfully logged ${usageReason} for ${selectedItem?.ingredient.name}`,
-        variant: "default",
-      })
-      setIsLogUsageOpen(false)
-      setSelectedItem(null)
-      setUsageQuantity(0)
-      setUsageBaseQuantity(0)
-      setUsageReason("consumption")
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to log usage",
-        variant: "destructive",
-      })
-    },
-  })
-
-  // Create ingredient mutation
-  const createIngredientMutation = useMutation({
-    mutationFn: async (data: IngredientFormData) => {
-      // Convert purchase unit cost to base unit cost
-      const costPerBaseUnit = data.cost_per_purchase_unit / data.purchase_size
-      
-      const ingredientData: CreateIngredientData = {
-        name: data.name,
-        unit: data.base_unit,
-        cost_per_unit: costPerBaseUnit,
-        supplier_id: data.supplier_id,
-        category: data.category,
-        min_stock_level: data.min_stock_level,
-        max_stock_level: data.max_stock_level,
-      }
-      
-      return createIngredient(ingredientData)
-    },
-    onSuccess: () => {
-      // No need to invalidate queries - real-time listener will update automatically
-      toast({
-        title: "Item Created",
-        description: "New ingredient has been added to your inventory.",
-        variant: "default",
-      })
-      setIsAddIngredientOpen(false)
-      resetIngredient()
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create ingredient",
         variant: "destructive",
       })
     },
@@ -412,18 +294,6 @@ export default function InventoryPage() {
     if (itemToDelete) {
       deleteIngredientMutation.mutate(itemToDelete.ingredient.id)
     }
-  }
-
-  const handleAddIngredient = (data: IngredientFormData) => {
-    if (suppliers.length === 0) {
-      toast({
-        title: "No Suppliers Available",
-        description: "Please add at least one supplier before creating an ingredient.",
-        variant: "destructive",
-      })
-      return
-    }
-    createIngredientMutation.mutate(data)
   }
 
   // Helper function to check if expiry is within 7 days
@@ -509,206 +379,27 @@ export default function InventoryPage() {
           <p className="text-muted-foreground">Manage your ingredient stock levels</p>
         </div>
         <div className="flex gap-2">
+          {/* Visual Stock Take Button */}
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => router.push('/inventory/visual-count')}
+          >
+            <Camera className="h-4 w-4" />
+            <span className="hidden sm:inline">Visual Count</span>
+          </Button>
+          
           {/* Primary Button: Create New Item */}
-          <Dialog open={isAddIngredientOpen} onOpenChange={setIsAddIngredientOpen}>
-            <DialogTrigger asChild>
+          <CreateIngredientDialog
+            open={isAddIngredientOpen}
+            onOpenChange={setIsAddIngredientOpen}
+            trigger={
               <Button className="gap-2">
                 <Plus className="h-4 w-4" />
                 Create New Item
               </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Create New Ingredient</DialogTitle>
-                <DialogDescription>
-                  Define a new ingredient for your inventory. Fill in all the details below.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmitIngredient(handleAddIngredient)} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ingredient-name">Ingredient Name *</Label>
-                  <Input
-                    id="ingredient-name"
-                    placeholder="e.g., All-Purpose Flour"
-                    {...registerIngredient("name")}
-                  />
-                  {ingredientErrors.name && (
-                    <p className="text-sm text-destructive">{ingredientErrors.name.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category">Category *</Label>
-                  <Select
-                    value={watchIngredient("category")}
-                    onValueChange={(value) => setIngredientValue("category", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Dry Goods">Dry Goods</SelectItem>
-                      <SelectItem value="Dairy">Dairy</SelectItem>
-                      <SelectItem value="Meat">Meat</SelectItem>
-                      <SelectItem value="Produce">Produce</SelectItem>
-                      <SelectItem value="Oils">Oils</SelectItem>
-                      <SelectItem value="Beverages">Beverages</SelectItem>
-                      <SelectItem value="Supplies">Supplies</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {ingredientErrors.category && (
-                    <p className="text-sm text-destructive">{ingredientErrors.category.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="supplier">Supplier *</Label>
-                  <Select
-                    value={watchIngredient("supplier_id")}
-                    onValueChange={(value) => setIngredientValue("supplier_id", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select supplier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {suppliers.length === 0 ? (
-                        <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                          No suppliers available. Add a supplier first.
-                        </div>
-                      ) : (
-                        suppliers.map((supplier) => (
-                          <SelectItem key={supplier.id} value={supplier.id}>
-                            {supplier.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {ingredientErrors.supplier_id && (
-                    <p className="text-sm text-destructive">
-                      {ingredientErrors.supplier_id.message}
-                    </p>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="purchase-unit">Purchase Unit *</Label>
-                    <Input
-                      id="purchase-unit"
-                      placeholder="e.g., Sack, Box, Case"
-                      {...registerIngredient("purchase_unit")}
-                    />
-                    {ingredientErrors.purchase_unit && (
-                      <p className="text-sm text-destructive">
-                        {ingredientErrors.purchase_unit.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="purchase-size">Purchase Size *</Label>
-                    <Input
-                      id="purchase-size"
-                      type="number"
-                      step="0.01"
-                      placeholder="e.g., 1000"
-                      {...registerIngredient("purchase_size", { valueAsNumber: true })}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Size in base unit (e.g., 1000g for a 1kg sack)
-                    </p>
-                    {ingredientErrors.purchase_size && (
-                      <p className="text-sm text-destructive">
-                        {ingredientErrors.purchase_size.message}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="base-unit">Base Unit *</Label>
-                    <Select
-                      value={watchIngredient("base_unit")}
-                      onValueChange={(value) => setIngredientValue("base_unit", value as any)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select base unit" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="g">Grams (g)</SelectItem>
-                        <SelectItem value="kg">Kilograms (kg)</SelectItem>
-                        <SelectItem value="mL">Milliliters (mL)</SelectItem>
-                        <SelectItem value="L">Liters (L)</SelectItem>
-                        <SelectItem value="piece">Piece</SelectItem>
-                        <SelectItem value="box">Box</SelectItem>
-                        <SelectItem value="pack">Pack</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {ingredientErrors.base_unit && (
-                      <p className="text-sm text-destructive">
-                        {ingredientErrors.base_unit.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cost">Cost per Purchase Unit *</Label>
-                    <Input
-                      id="cost"
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      {...registerIngredient("cost_per_purchase_unit", { valueAsNumber: true })}
-                    />
-                    {ingredientErrors.cost_per_purchase_unit && (
-                      <p className="text-sm text-destructive">
-                        {ingredientErrors.cost_per_purchase_unit.message}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="min-stock">Min Stock Level (Optional)</Label>
-                    <Input
-                      id="min-stock"
-                      type="number"
-                      placeholder="0"
-                      {...registerIngredient("min_stock_level", { valueAsNumber: true })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="max-stock">Max Stock Level (Optional)</Label>
-                    <Input
-                      id="max-stock"
-                      type="number"
-                      placeholder="0"
-                      {...registerIngredient("max_stock_level", { valueAsNumber: true })}
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsAddIngredientOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={
-                      createIngredientMutation.isPending ||
-                      suppliers.length === 0
-                    }
-                  >
-                    {createIngredientMutation.isPending
-                      ? "Creating..."
-                      : suppliers.length === 0
-                        ? "Add Supplier First"
-                        : "Create Item"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+            }
+          />
 
           {/* Secondary Button: Restock / Add Stock */}
           <Dialog open={isAddStockOpen} onOpenChange={setIsAddStockOpen}>
@@ -791,96 +482,14 @@ export default function InventoryPage() {
           </Dialog>
 
           {/* Log Usage Dialog */}
-          <Dialog open={isLogUsageOpen} onOpenChange={setIsLogUsageOpen}>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Log Usage / Waste</DialogTitle>
-                <DialogDescription>
-                  Record ingredient usage, waste, or corrections. This will deduct from stock.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Ingredient</Label>
-                  <Select
-                    value={selectedItem?.ingredient.id || ""}
-                    onValueChange={(value) => {
-                      const item = inventory.find(i => i.ingredient.id === value)
-                      setSelectedItem(item || null)
-                      if (item) {
-                        setUsageUnit(item.ingredient.unit)
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select ingredient" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {inventory.map((item) => (
-                        <SelectItem key={item.ingredient.id} value={item.ingredient.id}>
-                          {item.ingredient.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {selectedItem && (
-                  <>
-                    <SmartUnitInput
-                      value={usageQuantity}
-                      unit={usageUnit}
-                      unitType={getUnitType(selectedItem.ingredient.unit)}
-                      onChange={(qty, unit, baseValue) => {
-                        setUsageQuantity(qty)
-                        setUsageUnit(unit)
-                        setUsageBaseQuantity(baseValue)
-                      }}
-                      label="Quantity to Remove"
-                      placeholder="Enter amount"
-                    />
-                    <div className="space-y-2">
-                      <Label htmlFor="usage-reason">Reason</Label>
-                      <Select value={usageReason} onValueChange={(value: any) => setUsageReason(value)}>
-                        <SelectTrigger id="usage-reason">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="consumption">Consumption</SelectItem>
-                          <SelectItem value="waste">Waste</SelectItem>
-                          <SelectItem value="expired">Expired</SelectItem>
-                          <SelectItem value="correction">Correction</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsLogUsageOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (!selectedItem || usageBaseQuantity <= 0) return
-                    logUsageMutation.mutate({
-                      ingredient_id: selectedItem.ingredient.id,
-                      baseQuantity: usageBaseQuantity,
-                      reason: usageReason,
-                    })
-                  }}
-                  disabled={
-                    inventory.length === 0 ||
-                    !selectedItem ||
-                    usageBaseQuantity <= 0 ||
-                    logUsageMutation.isPending
-                  }
-                  variant="destructive"
-                >
-                  {logUsageMutation.isPending ? "Logging..." : "Log Usage"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          {userData?.id && (
+            <LogUsageDialog
+              open={isLogUsageOpen}
+              onOpenChange={setIsLogUsageOpen}
+              inventory={inventory}
+              userId={userData.id}
+            />
+          )}
         </div>
       </div>
 
@@ -918,12 +527,12 @@ export default function InventoryPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ingredient</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Supplier</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="align-middle">Ingredient</TableHead>
+                  <TableHead className="text-center align-middle">Category</TableHead>
+                  <TableHead className="text-center align-middle">Quantity</TableHead>
+                  <TableHead className="text-center align-middle">Status</TableHead>
+                  <TableHead className="text-center align-middle">Supplier</TableHead>
+                  <TableHead className="text-right align-middle">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -942,12 +551,12 @@ export default function InventoryPage() {
                         expiringSoon && "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-900"
                       )}
                     >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                      <TableCell className="align-middle py-4">
+                        <div className="flex items-center h-full gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted flex-shrink-0">
                             <Package className="h-5 w-5 text-muted-foreground" />
                           </div>
-                          <div>
+                          <div className="flex flex-col justify-center">
                             <div className="flex items-center gap-2">
                               <p className="font-medium">{item.ingredient.name}</p>
                               {expiringSoon && (
@@ -971,13 +580,15 @@ export default function InventoryPage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {item.ingredient.category && (
-                          <Badge variant="outline">{item.ingredient.category}</Badge>
-                        )}
+                      <TableCell className="text-center align-middle py-4">
+                        <div className="flex items-center justify-center h-full">
+                          {item.ingredient.category && (
+                            <Badge variant="outline" className="whitespace-nowrap w-[110px] text-center">{item.ingredient.category}</Badge>
+                          )}
+                        </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
+                      <TableCell className="text-center align-middle py-4">
+                        <div className="flex flex-col justify-center items-center h-full gap-1">
                           <p className="font-medium">
                             {formatSmartQuantity(currentQuantity, unitType)}
                           </p>
@@ -993,14 +604,18 @@ export default function InventoryPage() {
                           />
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant={config.variant}>{config.label}</Badge>
+                      <TableCell className="text-center align-middle py-4">
+                        <div className="flex items-center justify-center h-full">
+                          <Badge className={cn("border-transparent", config.className)}>{config.label}</Badge>
+                        </div>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {item.supplier?.name || "N/A"}
+                      <TableCell className="text-muted-foreground align-middle text-center py-4">
+                        <div className="flex items-center justify-center h-full max-w-[150px] mx-auto">
+                          {item.supplier?.name || "N/A"}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <TableCell className="text-right align-middle py-4">
+                        <div className="flex items-center justify-end h-full gap-2">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1123,7 +738,7 @@ export default function InventoryPage() {
                           </p>
                         )}
                       </div>
-                      <Badge variant={config.variant}>{config.label}</Badge>
+                      <Badge className={cn("border-transparent", config.className)}>{config.label}</Badge>
                     </div>
                     <p className="text-2xl font-bold text-foreground mb-3">
                       {formatSmartQuantity(currentQuantity, unitType)}
