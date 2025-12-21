@@ -42,3 +42,7 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Firebase/Google service accounts (NEVER commit these!)
+**/serviceAccountKey.json
+**/service-account*.json

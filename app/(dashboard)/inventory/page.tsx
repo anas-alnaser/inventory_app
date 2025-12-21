@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Search, Plus, Package, Trash2, AlertTriangle, Clock, ArrowUp, ArrowDown, Minus, ShoppingCart, Camera } from "lucide-react"
+import { Search, Plus, Package, Trash2, AlertTriangle, Clock, ArrowUp, ArrowDown, Minus, ShoppingCart, Camera, Download, Pencil } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -56,7 +56,7 @@ import { Label } from "@/components/ui/label"
 import { toast } from "@/lib/hooks/use-toast"
 import { SmartUnitInput } from "@/components/inventory/SmartUnitInput"
 import { formatSmartQuantity } from "@/lib/utils/unit-conversion"
-import { cn } from "@/lib/utils"
+import { cn, exportToCSV } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/useAuth"
 import {
   listenToInventoryWithStock,
@@ -67,7 +67,9 @@ import {
 } from "@/lib/services"
 import { CreateIngredientDialog } from "@/components/inventory/CreateIngredientDialog"
 import { LogUsageDialog } from "@/components/inventory/LogUsageDialog"
-import type { StockLog } from "@/types/entities"
+import { EmptyState } from "@/components/ui/empty-state"
+import { EditIngredientDialog } from "@/components/inventory/EditIngredientDialog"
+import type { StockLog, Ingredient } from "@/types/entities"
 import type { InventoryItem } from "@/lib/services"
 
 const statusConfig = {
@@ -130,7 +132,9 @@ export default function InventoryPage() {
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [selectedIngredientForHistory, setSelectedIngredientForHistory] = useState<InventoryItem | null>(null)
-  
+  const [isEditIngredientOpen, setIsEditIngredientOpen] = useState(false)
+  const [ingredientToEdit, setIngredientToEdit] = useState<Ingredient | null>(null)
+
   // Real-time inventory state
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -144,10 +148,18 @@ export default function InventoryPage() {
       return
     }
 
+    // Check if userData and branchId are available
+    if (!userData?.branchId) {
+      setError(new Error('Branch ID is required. Please ensure your account is associated with a branch.'))
+      setIsLoading(false)
+      return
+    }
+
     setIsLoading(true)
     setError(null)
 
     const unsubscribe = listenToInventoryWithStock(
+      userData.branchId,
       (inventoryData) => {
         setInventory(inventoryData)
         setIsLoading(false)
@@ -159,7 +171,7 @@ export default function InventoryPage() {
     return () => {
       unsubscribe()
     }
-  }, [authLoading])
+  }, [authLoading, userData?.branchId])
 
   // Fetch users for displaying names in logs
   const { data: users = [] } = useQuery({
@@ -169,12 +181,12 @@ export default function InventoryPage() {
 
   // Fetch stock logs for selected ingredient
   const { data: stockLogs = [], isLoading: logsLoading } = useQuery({
-    queryKey: ["stock-logs", selectedIngredientForHistory?.ingredient.id],
+    queryKey: ["stock-logs", selectedIngredientForHistory?.ingredient.id, userData?.branchId],
     queryFn: () => {
-      if (!selectedIngredientForHistory?.ingredient.id) return []
-      return getStockLogsByIngredient(selectedIngredientForHistory.ingredient.id, 50)
+      if (!selectedIngredientForHistory?.ingredient.id || !userData?.branchId) return []
+      return getStockLogsByIngredient(userData.branchId, selectedIngredientForHistory.ingredient.id, 50)
     },
-    enabled: !!selectedIngredientForHistory?.ingredient.id && isHistoryOpen,
+    enabled: !!selectedIngredientForHistory?.ingredient.id && !!userData?.branchId && isHistoryOpen,
   })
 
   // Get unique categories from inventory
@@ -195,8 +207,12 @@ export default function InventoryPage() {
       if (!userData?.id) {
         throw new Error("User must be logged in")
       }
+      if (!userData?.branchId) {
+        throw new Error("Branch ID is required for data isolation")
+      }
       return addStock({
         ingredient_id: data.ingredient_id,
+        branchId: userData.branchId,
         quantity: data.quantity,
         unit: data.unit,
         user_id: userData.id,
@@ -296,6 +312,32 @@ export default function InventoryPage() {
     }
   }
 
+  const handleExportInventory = () => {
+    const exportData = inventory.map(item => {
+      const currentStock = item.stock?.quantity || 0
+      const costPerUnit = item.ingredient.cost_per_unit || 0
+      const totalValue = currentStock * costPerUnit
+
+      return {
+        'Item Name': item.ingredient.name,
+        'Category': item.ingredient.category || 'Uncategorized',
+        'Current Stock': currentStock,
+        'Unit': item.ingredient.unit,
+        'Cost per Unit': costPerUnit,
+        'Total Value': totalValue,
+      }
+    })
+
+    const dateStr = new Date().toISOString().split('T')[0]
+    exportToCSV(exportData, `StockWave_Inventory_${dateStr}`)
+
+    toast({
+      title: "Export Successful",
+      description: "Inventory data has been exported to CSV",
+      variant: "default",
+    })
+  }
+
   // Helper function to check if expiry is within 7 days
   const isExpiringSoon = (expiryDate: Date | string | any): boolean => {
     if (!expiryDate) return false
@@ -310,7 +352,7 @@ export default function InventoryPage() {
       } else {
         return false
       }
-      
+
       const now = new Date()
       const diffTime = date.getTime() - now.getTime()
       const diffDays = diffTime / (1000 * 60 * 60 * 24)
@@ -379,6 +421,17 @@ export default function InventoryPage() {
           <p className="text-muted-foreground">Manage your ingredient stock levels</p>
         </div>
         <div className="flex gap-2">
+          {/* Export CSV Button */}
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleExportInventory}
+            disabled={inventory.length === 0}
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Export CSV</span>
+          </Button>
+
           {/* Visual Stock Take Button */}
           <Button
             variant="outline"
@@ -388,7 +441,7 @@ export default function InventoryPage() {
             <Camera className="h-4 w-4" />
             <span className="hidden sm:inline">Visual Count</span>
           </Button>
-          
+
           {/* Primary Button: Create New Item */}
           <CreateIngredientDialog
             open={isAddIngredientOpen}
@@ -482,12 +535,14 @@ export default function InventoryPage() {
           </Dialog>
 
           {/* Log Usage Dialog */}
-          {userData?.id && (
+          {userData?.id && userData?.branchId && (
             <LogUsageDialog
               open={isLogUsageOpen}
               onOpenChange={setIsLogUsageOpen}
               inventory={inventory}
               userId={userData.id}
+              branchId={userData.branchId}
+              preselectedIngredientId={selectedItem?.ingredient.id}
             />
           )}
         </div>
@@ -522,6 +577,16 @@ export default function InventoryPage() {
       <div className="hidden md:block">
         {isLoading ? (
           <InventoryTableSkeleton />
+        ) : sortedInventory.length === 0 ? (
+          <EmptyState
+            icon={Package}
+            title="No Inventory Yet"
+            description={searchQuery
+              ? `No ingredients match "${searchQuery}"`
+              : "Add your first ingredient to start managing your inventory"}
+            actionLabel="Create New Item"
+            onAction={() => setIsAddIngredientOpen(true)}
+          />
         ) : (
           <Card>
             <Table>
@@ -545,7 +610,7 @@ export default function InventoryPage() {
                   const expiringSoon = item.stock?.expiry_date && isExpiringSoon(item.stock.expiry_date)
 
                   return (
-                    <TableRow 
+                    <TableRow
                       key={item.id}
                       className={cn(
                         expiringSoon && "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-900"
@@ -573,7 +638,7 @@ export default function InventoryPage() {
                                 Expires:{" "}
                                 {new Date(
                                   (item.stock.expiry_date as any).toDate?.() ||
-                                    item.stock.expiry_date
+                                  item.stock.expiry_date
                                 ).toLocaleDateString()}
                               </p>
                             )}
@@ -599,7 +664,7 @@ export default function InventoryPage() {
                               item.status === "good" && "bg-success",
                               item.status === "low" && "bg-warning",
                               (item.status === "critical" || item.status === "out") &&
-                                "bg-destructive"
+                              "bg-destructive"
                             )}
                           />
                         </div>
@@ -664,6 +729,17 @@ export default function InventoryPage() {
                             <Plus className="h-4 w-4 mr-1" />
                             Add
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setIngredientToEdit(item.ingredient)
+                              setIsEditIngredientOpen(true)
+                            }}
+                            title="Edit Ingredient"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
                           {userData?.role === "admin" && (
                             <Button
                               variant="ghost"
@@ -689,6 +765,16 @@ export default function InventoryPage() {
       <div className="md:hidden">
         {isLoading ? (
           <InventoryCardSkeleton />
+        ) : sortedInventory.length === 0 ? (
+          <EmptyState
+            icon={Package}
+            title="No Inventory Yet"
+            description={searchQuery
+              ? `No ingredients match "${searchQuery}"`
+              : "Add your first ingredient to start managing your inventory"}
+            actionLabel="Create New Item"
+            onAction={() => setIsAddIngredientOpen(true)}
+          />
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {sortedInventory.map((item, index) => {
@@ -733,7 +819,7 @@ export default function InventoryPage() {
                             Expires:{" "}
                             {new Date(
                               (item.stock.expiry_date as any).toDate?.() ||
-                                item.stock.expiry_date
+                              item.stock.expiry_date
                             ).toLocaleDateString()}
                           </p>
                         )}
@@ -750,7 +836,7 @@ export default function InventoryPage() {
                         item.status === "good" && "bg-success",
                         item.status === "low" && "bg-warning",
                         (item.status === "critical" || item.status === "out") &&
-                          "bg-destructive"
+                        "bg-destructive"
                       )}
                     />
                     <div className="flex items-center justify-between text-sm">
@@ -825,25 +911,6 @@ export default function InventoryPage() {
         )}
       </div>
 
-      {/* Empty State */}
-      {!isLoading && sortedInventory.length === 0 && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex flex-col items-center justify-center py-16 text-center"
-        >
-          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-            <Package className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h2 className="text-lg font-semibold text-foreground mb-2">No items found</h2>
-          <p className="text-muted-foreground max-w-sm">
-            {searchQuery
-              ? `No ingredients match "${searchQuery}"`
-              : "Start by adding ingredients to your inventory"}
-          </p>
-        </motion.div>
-      )}
-
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
@@ -878,7 +945,7 @@ export default function InventoryPage() {
               View all stock changes for this ingredient
             </SheetDescription>
           </SheetHeader>
-          
+
           <div className="mt-6 space-y-4">
             {logsLoading ? (
               <div className="space-y-3">
@@ -901,14 +968,14 @@ export default function InventoryPage() {
               <div className="relative">
                 {/* Timeline line */}
                 <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-border" />
-                
+
                 <div className="space-y-6">
                   {stockLogs.map((log, index) => {
                     const user = users.find(u => u.id === log.user_id)
                     const userName = user?.name || "Unknown User"
                     const isPositive = log.change_amount > 0
                     const amount = Math.abs(log.change_amount)
-                    
+
                     // Format date
                     let logDate: Date
                     try {
@@ -924,10 +991,10 @@ export default function InventoryPage() {
                     } catch {
                       logDate = new Date()
                     }
-                    
+
                     const dateStr = logDate.toLocaleDateString()
                     const timeStr = logDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    
+
                     // Get reason label
                     const reasonLabels: Record<string, string> = {
                       purchase: "Purchase",
@@ -943,8 +1010,8 @@ export default function InventoryPage() {
                         {/* Timeline dot */}
                         <div className={cn(
                           "relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2",
-                          isPositive 
-                            ? "bg-green-100 border-green-500 dark:bg-green-900/30 dark:border-green-600" 
+                          isPositive
+                            ? "bg-green-100 border-green-500 dark:bg-green-900/30 dark:border-green-600"
                             : "bg-red-100 border-red-500 dark:bg-red-900/30 dark:border-red-600"
                         )}>
                           {isPositive ? (
@@ -953,13 +1020,13 @@ export default function InventoryPage() {
                             <ArrowDown className="h-5 w-5 text-red-600 dark:text-red-400" />
                           )}
                         </div>
-                        
+
                         {/* Content */}
                         <div className="flex-1 pb-6">
                           <div className={cn(
                             "rounded-lg border p-4",
-                            isPositive 
-                              ? "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900" 
+                            isPositive
+                              ? "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900"
                               : "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900"
                           )}>
                             <div className="flex items-start justify-between mb-2">
@@ -989,6 +1056,18 @@ export default function InventoryPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Edit Ingredient Dialog */}
+      {ingredientToEdit && (
+        <EditIngredientDialog
+          ingredient={ingredientToEdit}
+          open={isEditIngredientOpen}
+          onOpenChange={(open) => {
+            setIsEditIngredientOpen(open)
+            if (!open) setIngredientToEdit(null)
+          }}
+        />
+      )}
     </div>
   )
 }

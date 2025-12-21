@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { QueryProvider } from '@/lib/providers/QueryProvider'
 import { ThemeProvider } from '@/lib/providers/ThemeProvider'
+import { StaffProvider } from '@/lib/contexts/StaffContext'
+import { StoreDeviceGuard } from '@/components/layout/StoreDeviceGuard'
 import { Toaster } from '@/components/ui/toaster'
 
 export const metadata: Metadata = {
@@ -39,13 +41,17 @@ export default function RootLayout({
       <body className="min-h-screen bg-background antialiased">
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
         >
           <QueryProvider>
-            {children}
-            <Toaster />
+            <StaffProvider>
+              <StoreDeviceGuard>
+                {children}
+              </StoreDeviceGuard>
+              <Toaster />
+            </StaffProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>

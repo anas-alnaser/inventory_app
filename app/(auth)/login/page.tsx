@@ -44,7 +44,18 @@ export default function LoginPage() {
         description: "You have successfully signed in.",
         variant: "default",
       })
-      router.push("/dashboard")
+      
+      // Redirect based on user type
+      if (result.user?.role === 'owner') {
+        // Owners go directly to dashboard
+        router.push("/dashboard")
+      } else if (result.user?.is_store_device === true) {
+        // Store devices go to lock screen for staff PIN authentication
+        router.push("/lock-screen")
+      } else {
+        // Default to dashboard for other users
+        router.push("/dashboard")
+      }
     } else {
       toast({
         title: "Sign in failed",

@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
@@ -40,18 +41,26 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { getPurchaseOrders } from "@/lib/services"
+import { useAuth } from "@/lib/hooks/useAuth"
 import { cn } from "@/lib/utils"
 import type { PurchaseOrder } from "@/types/entities"
 
 export default function OrdersPage() {
   const router = useRouter()
+  const { userData } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
 
   // Fetch all orders - services.ts modified to return all regardless of param
   const { data: allOrders = [], isLoading } = useQuery({
-    queryKey: ["orders", "all"],
-    queryFn: () => getPurchaseOrders('active'), 
+    queryKey: ["orders", "all", userData?.branchId],
+    queryFn: () => {
+      if (!userData?.branchId) {
+        throw new Error('Branch ID is required')
+      }
+      return getPurchaseOrders(userData.branchId, 'active')
+    },
+    enabled: !!userData?.branchId, 
   })
 
   // Since we are getting ALL orders now due to service change, 
@@ -118,18 +127,15 @@ export default function OrdersPage() {
       {isLoading ? (
         <OrdersSkeleton />
       ) : filteredOrders.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg bg-card/50 border-dashed">
-            <Truck className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold">No orders found in database</h3>
-            <p className="text-muted-foreground max-w-sm mb-6">
-              {searchQuery ? "Try adjusting your search terms." : "Get started by creating your first purchase order."}
-            </p>
-            {!searchQuery && (
-              <Button onClick={() => router.push("/orders/new")}>
-                Create Order
-              </Button>
-            )}
-        </div>
+        <EmptyState
+          icon={Truck}
+          title="No Orders Yet"
+          description={searchQuery
+            ? `No orders match "${searchQuery}"`
+            : "Create your first purchase order to start managing supplier deliveries"}
+          actionLabel={searchQuery ? undefined : "New Purchase Order"}
+          onAction={searchQuery ? undefined : () => router.push("/orders/new")}
+        />
       ) : (
         <>
           {/* Desktop View - Table */}

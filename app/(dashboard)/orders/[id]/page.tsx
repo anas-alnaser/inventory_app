@@ -69,7 +69,8 @@ export default function OrderDetailsPage() {
   const receiveMutation = useMutation({
     mutationFn: async () => {
       if (!userData?.id) throw new Error("User not authenticated")
-      return receivePurchaseOrder(id, userData.id)
+      if (!userData?.branchId) throw new Error("Branch ID is required for data isolation")
+      return receivePurchaseOrder(id, userData.id, userData.branchId)
     },
     onSuccess: () => {
       toast({

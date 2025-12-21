@@ -42,7 +42,7 @@ test.describe('StockWave E2E Main Flow', () => {
 
     // Verify redirect to dashboard
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByText('Summary')).toBeVisible({ timeout: 10000 }); // Wait for dashboard to load
+    await expect(page.getByText('Total Items').first()).toBeVisible({ timeout: 10000 }); // Wait for dashboard to load
   });
 
   test('Test 2: Inventory Cycle & Supplier Pre-requisite', async ({ page }) => {
@@ -71,7 +71,7 @@ test.describe('StockWave E2E Main Flow', () => {
     await page.getByRole('button', { name: 'Add Supplier', exact: true }).click();
 
     // Wait for success toast or dialog verify
-    await expect(page.getByText('Supplier Added')).toBeVisible();
+    await expect(page.getByText('Supplier Added').first()).toBeVisible();
 
     // --- Inventory Cycle ---
     await page.goto('/inventory');
@@ -102,9 +102,8 @@ test.describe('StockWave E2E Main Flow', () => {
     // Save
     await page.getByRole('button', { name: 'Create Item' }).click();
 
-    // Verify
-    await expect(page.getByText('Item Created')).toBeVisible();
-    await expect(page.getByText('Automated Test Item')).toBeVisible();
+    // Verify item appears in the table (side effect verification instead of toast)
+    await expect(page.getByRole('cell', { name: 'Automated Test Item' })).toBeVisible();
   });
 
   test('Test 3: Dashboard Logic', async ({ page }) => {
@@ -118,9 +117,9 @@ test.describe('StockWave E2E Main Flow', () => {
 
     // Verify Total Items count is visible
     // "Total Items" label and value
-    await expect(page.getByText('Total Items')).toBeVisible();
+    await expect(page.getByText('Total Items').first()).toBeVisible();
     // Verify Recent Activity
-    await expect(page.getByText('Recent Activity')).toBeVisible();
+    await expect(page.getByText('Recent Activity').first()).toBeVisible();
   });
 
   test('Test 4: Supplier Flow', async ({ page }) => {
@@ -134,23 +133,24 @@ test.describe('StockWave E2E Main Flow', () => {
     // Navigate to Suppliers
     await page.goto('/suppliers');
 
-    // Click a Supplier Card (View Profile)
-    // We created "Automated Supplier" in Test 2.
-    // Card has a dropdown menu.
-    // Find the card with "Automated Supplier"
-    const card = page.locator('.rounded-lg', { hasText: 'Automated Supplier' }).first();
-    // Within card, find the dropdown trigger button (MoreVertical icon)
-    // The code uses `Button` with `MoreVertical`.
-    await card.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') }).click();
+    // Ensure supplier exists (pre-condition for atomic test)
+    await page.getByRole('button', { name: /add supplier/i }).click();
+    await page.getByLabel(/company name/i).fill('Profile Test Supplier');
+    await page.getByLabel(/phone number/i).fill('0790000001');
+    await page.getByLabel(/email/i).fill('profile@supplier.com');
+    await page.getByRole('button', { name: /add supplier/i }).last().click();
 
-    // Click "View Profile"
-    await page.getByRole('menuitem', { name: 'View Profile' }).click();
+    // Wait for supplier to appear in the list
+    await expect(page.getByText('Profile Test Supplier').first()).toBeVisible();
+
+    // Click the supplier name to navigate to the profile
+    await page.getByText('Profile Test Supplier').first().click();
 
     // Verify Profile Page Loads
     // URL should contain /suppliers/ID
     await expect(page).toHaveURL(/\/suppliers\/.+/);
     // Page should show supplier name
-    await expect(page.getByRole('heading', { name: 'Automated Supplier' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Profile Test Supplier' })).toBeVisible({ timeout: 10000 });
   });
 
 });

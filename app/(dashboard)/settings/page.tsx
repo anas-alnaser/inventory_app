@@ -6,7 +6,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { User, Palette, DollarSign } from "lucide-react"
+import { User, Palette, DollarSign, Database, AlertTriangle, Trash2 } from "lucide-react"
+import { useTheme } from "next-themes"
+import { doc, setDoc } from "firebase/firestore"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,9 +16,23 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { useAuth } from "@/lib/hooks/useAuth"
+import { useSettings } from "@/lib/hooks/useSettings"
 import { updateUser } from "@/lib/services"
+import { deleteAllDatabaseData } from "@/lib/services/database"
 import { toast } from "@/lib/hooks/use-toast"
+import { db } from "@/lib/firebase"
 
 const profileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -26,8 +42,19 @@ type ProfileFormData = z.infer<typeof profileSchema>
 
 export default function SettingsPage() {
   const { userData } = useAuth()
+  const { currency: savedCurrency, theme: savedTheme, loading: settingsLoading } = useSettings()
+  const { theme: currentTheme, setTheme } = useTheme()
   const queryClient = useQueryClient()
   const [currency, setCurrency] = useState("JOD")
+  const [themeState, setThemeState] = useState("system")
+
+  // Initialize currency and theme from saved settings
+  useEffect(() => {
+    if (!settingsLoading) {
+      setCurrency(savedCurrency)
+      setThemeState(savedTheme || currentTheme || "system")
+    }
+  }, [savedCurrency, savedTheme, settingsLoading, currentTheme])
 
   const {
     register,
@@ -74,13 +101,46 @@ export default function SettingsPage() {
     updateProfileMutation.mutate(data)
   }
 
+  const savePreferencesMutation = useMutation({
+    mutationFn: async () => {
+      if (!userData?.id) throw new Error("User not authenticated")
+      
+      const userDocRef = doc(db, "users", userData.id)
+      await setDoc(
+        userDocRef,
+        {
+          currency,
+          theme: themeState,
+        },
+        { merge: true }
+      )
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-settings", userData?.id] })
+      queryClient.invalidateQueries({ queryKey: ["user", userData?.id] })
+      
+      // Update theme in the theme provider
+      if (setTheme) {
+        setTheme(themeState)
+      }
+      
+      toast({
+        title: "Preferences Saved",
+        description: "Your preferences have been saved successfully.",
+        variant: "default",
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save preferences",
+        variant: "destructive",
+      })
+    },
+  })
+
   const handleSavePreferences = () => {
-    // TODO: Save preferences to user document or localStorage
-    toast({
-      title: "Preferences Saved",
-      description: "Your preferences have been saved.",
-      variant: "default",
-    })
+    savePreferencesMutation.mutate()
   }
 
   return (
@@ -95,6 +155,9 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
+          {(userData?.role === 'admin' || userData?.role === 'owner') && (
+            <TabsTrigger value="database">Database</TabsTrigger>
+          )}
         </TabsList>
 
         {/* Profile Tab */}
@@ -186,22 +249,184 @@ export default function SettingsPage() {
                 <Separator />
 
                 <div className="space-y-2">
-                  <Label>Theme</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Theme is controlled by your system preferences. Use the theme toggle in the
-                    header to switch between light and dark mode.
+                  <Label htmlFor="theme">Theme</Label>
+                  <div className="flex items-center gap-2">
+                    <Palette className="h-4 w-4 text-muted-foreground" />
+                    <select
+                      id="theme"
+                      value={themeState}
+                      onChange={(e) => setThemeState(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                      <option value="system">System</option>
+                    </select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Your theme preference will be saved and applied automatically.
                   </p>
                 </div>
               </div>
 
               <Separator />
 
-              <Button onClick={handleSavePreferences}>Save Preferences</Button>
+              <Button 
+                onClick={handleSavePreferences}
+                disabled={savePreferencesMutation.isPending}
+              >
+                {savePreferencesMutation.isPending ? "Saving..." : "Save Preferences"}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Database Tab - Only for Admin/Owner */}
+        {(userData?.role === 'admin' || userData?.role === 'owner') && (
+          <TabsContent value="database">
+            <Card className="border-destructive">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <Database className="h-5 w-5 text-destructive" />
+                  <div>
+                    <CardTitle className="text-destructive">Database Management</CardTitle>
+                    <CardDescription>
+                      Dangerous operations - Use with extreme caution
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-destructive">Warning: Destructive Operation</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Deleting the database will permanently remove ALL data from Firestore including:
+                      </p>
+                      <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                        <li>All branches, suppliers, ingredients, and menu items</li>
+                        <li>All inventory stock and stock logs</li>
+                        <li>All purchase orders and POS orders</li>
+                        <li>All invoices and payment records</li>
+                        <li>All analytics, forecasts, and AI predictions</li>
+                        <li>All system logs and cached data</li>
+                      </ul>
+                      <p className="text-sm font-semibold text-destructive mt-2">
+                        This action cannot be undone! Users collection will be preserved for authentication.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <DeleteDatabaseButton />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
+  )
+}
+
+function DeleteDatabaseButton() {
+  const { userData } = useAuth()
+  const queryClient = useQueryClient()
+  const [confirmText, setConfirmText] = useState("")
+  const [isOpen, setIsOpen] = useState(false)
+
+  const deleteDatabaseMutation = useMutation({
+    mutationFn: async () => {
+      if (!userData || (userData.role !== 'admin' && userData.role !== 'owner')) {
+        throw new Error('Only administrators can delete the database')
+      }
+      return await deleteAllDatabaseData()
+    },
+    onSuccess: (result) => {
+      if (result.success) {
+        // Invalidate all queries to refresh the UI
+        queryClient.clear()
+        
+        toast({
+          title: "Database Deleted",
+          description: `Successfully deleted all data. Deleted ${Object.values(result.deletedCounts).reduce((a, b) => a + b, 0)} documents total.`,
+          variant: "default",
+        })
+        
+        setIsOpen(false)
+        setConfirmText("")
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to delete database",
+          variant: "destructive",
+        })
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete database",
+        variant: "destructive",
+      })
+    },
+  })
+
+  const handleDelete = () => {
+    if (confirmText === "DELETE ALL DATA") {
+      deleteDatabaseMutation.mutate()
+    }
+  }
+
+  const isConfirmValid = confirmText === "DELETE ALL DATA"
+
+  return (
+    <AlertDialog open={isOpen} onOpenChange={setIsOpen}>
+      <AlertDialogTrigger asChild>
+        <Button variant="destructive" className="w-full">
+          <Trash2 className="h-4 w-4 mr-2" />
+          Delete All Database Data
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent className="max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-5 w-5" />
+            Delete All Database Data?
+          </AlertDialogTitle>
+          <AlertDialogDescription className="space-y-3">
+            <p>
+              This will permanently delete <strong>ALL</strong> data from your Firestore database.
+              This action <strong>CANNOT</strong> be undone.
+            </p>
+            <p className="font-semibold">
+              Type <strong className="text-destructive">DELETE ALL DATA</strong> to confirm:
+            </p>
+            <Input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="DELETE ALL DATA"
+              className="mt-2"
+            />
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setConfirmText("")}>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleDelete}
+            disabled={!isConfirmValid || deleteDatabaseMutation.isPending}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {deleteDatabaseMutation.isPending ? "Deleting..." : "Delete Everything"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 

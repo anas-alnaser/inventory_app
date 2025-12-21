@@ -32,6 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { toast } from "@/lib/hooks/use-toast"
+import { useAuth } from "@/lib/hooks/useAuth"
 import { cn } from "@/lib/utils"
 import { getSuppliers, getIngredients, createPurchaseOrder } from "@/lib/services"
 import type { Ingredient, Supplier } from "@/types/entities"
@@ -49,6 +50,7 @@ interface OrderItemRow {
 
 export default function NewOrderPage() {
   const router = useRouter()
+  const { userData } = useAuth()
   const searchParams = useSearchParams()
   const prefillSupplierId = searchParams.get("supplierId")
   const prefillIngredientId = searchParams.get("ingredientId")
@@ -93,9 +95,13 @@ export default function NewOrderPage() {
       const supplier = suppliers.find(s => s.id === selectedSupplierId)
       if (!supplier) throw new Error("Invalid supplier")
 
+      if (!userData?.branchId) {
+        throw new Error("Branch ID is required for data isolation")
+      }
       return createPurchaseOrder({
         supplier_id: supplier.id,
         supplier_name: supplier.name,
+        branchId: userData.branchId,
         expected_delivery_date: date,
         status,
         items: items.map(item => ({

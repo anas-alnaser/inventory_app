@@ -14,7 +14,8 @@ import {
   Sparkles,
   AlertTriangle,
   ChefHat,
-  LogOut
+  LogOut,
+  ShoppingCart
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -43,6 +44,11 @@ const mainNavItems: NavItem[] = [
     href: "/inventory",
     label: "Inventory",
     icon: <Package className="h-6 w-6" />,
+  },
+  {
+    href: "/pos",
+    label: "POS",
+    icon: <ShoppingCart className="h-6 w-6" />,
   },
   {
     href: "/orders",

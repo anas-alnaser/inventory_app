@@ -6,6 +6,7 @@ import {
   getDoc,
   getDocs,
   query,
+  where,
   orderBy,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -36,6 +37,40 @@ export async function getUserById(id: string): Promise<User | null> {
     return { id: docSnap.id, ...(docSnap.data() as object) } as User;
   }
   return null;
+}
+
+/**
+ * Get user by PIN code
+ * Optionally filters by branch_id if provided to prevent cross-store access
+ */
+export async function getUserByPin(
+  pin: string,
+  branchId?: string
+): Promise<User | null> {
+  try {
+    const constraints = [
+      where('pin_code', '==', pin),
+    ];
+    
+    // Filter by branch_id if provided
+    if (branchId) {
+      constraints.push(where('branch_id', '==', branchId));
+    }
+    
+    const q = query(usersCollection, ...constraints);
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) {
+      return null;
+    }
+    
+    // Return the first matching user
+    const docSnap = snapshot.docs[0];
+    return { id: docSnap.id, ...(docSnap.data() as object) } as User;
+  } catch (error: any) {
+    console.error('Error getting user by PIN:', error);
+    return null;
+  }
 }
 
 export interface CreateUserWithAuthData extends CreateUserData {

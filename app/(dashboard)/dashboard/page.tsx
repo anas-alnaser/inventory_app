@@ -6,13 +6,18 @@ import { useQuery } from "@tanstack/react-query"
 import { QuickActions } from "@/components/dashboard/QuickActions"
 import { QuickOperationDialog } from "@/components/dashboard/QuickOperationDialog"
 import { AIInsightCard } from "@/components/dashboard/AIInsightCard"
+import { GettingStartedChecklist } from "@/components/dashboard/GettingStartedChecklist"
 import { useAuth } from "@/lib/hooks/useAuth"
+import { useSettings } from "@/lib/hooks/useSettings"
 import { Button } from "@/components/ui/button"
 import { 
   getIngredients, 
   getStockLogs, 
   getPurchaseOrders,
   listenToInventoryWithStock,
+  getTodaySales,
+  getSuppliers,
+  getMenuItemsWithFinancials,
   type InventoryItem 
 } from "@/lib/services"
 import { getAllUsers } from "@/lib/services"
@@ -23,9 +28,10 @@ import {
   DollarSign, 
   Package, 
   CheckCircle2, 
-  Archive
+  Archive,
+  TrendingUp
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -65,6 +71,7 @@ function formatTimeAgo(date: Date | string | any): string {
 
 export default function DashboardPage() {
   const { userData } = useAuth()
+  const { currency } = useSettings()
   const greeting = getGreeting()
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [restockId, setRestockId] = useState<string | null>(null)
@@ -75,10 +82,28 @@ export default function DashboardPage() {
     queryFn: () => getIngredients(),
   })
 
+  // Fetch suppliers for getting started checklist
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["dashboard-suppliers"],
+    queryFn: () => getSuppliers(),
+  })
+
+  // Fetch menu items for getting started checklist
+  const { data: menuItems = [] } = useQuery({
+    queryKey: ["dashboard-menu-items"],
+    queryFn: () => getMenuItemsWithFinancials(),
+  })
+
   // Fetch recent stock logs
   const { data: recentLogs = [] } = useQuery({
-    queryKey: ["dashboard-logs"],
-    queryFn: () => getStockLogs(undefined, 5),
+    queryKey: ["dashboard-logs", userData?.branchId],
+    queryFn: () => {
+      if (!userData?.branchId) {
+        throw new Error('Branch ID is required');
+      }
+      return getStockLogs(userData.branchId, undefined, 5);
+    },
+    enabled: !!userData?.branchId,
   })
 
   // Fetch users for activity display
@@ -89,17 +114,33 @@ export default function DashboardPage() {
 
   // Fetch active purchase orders for incoming deliveries
   const { data: activeOrders = [] } = useQuery({
-    queryKey: ["dashboard-orders"],
-    queryFn: () => getPurchaseOrders('active'),
+    queryKey: ["dashboard-orders", userData?.branchId],
+    queryFn: () => {
+      if (!userData?.branchId) {
+        throw new Error('Branch ID is required')
+      }
+      return getPurchaseOrders(userData.branchId, 'active')
+    },
+    enabled: !!userData?.branchId,
+  })
+
+  // Fetch today's sales revenue
+  const { data: todayRevenue = 0 } = useQuery({
+    queryKey: ["dashboard-today-sales"],
+    queryFn: () => getTodaySales(),
+    refetchInterval: 30000, // Refetch every 30 seconds to keep it updated
   })
 
   // Real-time inventory listener
   useEffect(() => {
-    const unsubscribe = listenToInventoryWithStock((inventoryData) => {
+    if (!userData?.branchId) {
+      return
+    }
+    const unsubscribe = listenToInventoryWithStock(userData.branchId, (inventoryData) => {
       setInventory(inventoryData)
     })
     return () => unsubscribe()
-  }, [])
+  }, [userData?.branchId])
 
   // Calculate dashboard stats
   const totalItems = ingredients.length
@@ -186,6 +227,12 @@ export default function DashboardPage() {
     },
   ] : []
 
+  // Check if we have zero data for getting started checklist
+  const hasSuppliers = suppliers.length > 0
+  const hasInventory = ingredients.length > 0
+  const hasMenu = menuItems.length > 0
+  const showGettingStarted = !hasSuppliers || !hasInventory || !hasMenu
+
   return (
     <div className="px-4 py-6 md:px-6 lg:px-8 space-y-8 pb-20">
       {/* Welcome Section */}
@@ -202,8 +249,17 @@ export default function DashboardPage() {
         </p>
       </motion.div>
 
+      {/* Getting Started Checklist - Show when there's zero data */}
+      {showGettingStarted && (
+        <GettingStartedChecklist
+          hasSuppliers={hasSuppliers}
+          hasInventory={hasInventory}
+          hasMenu={hasMenu}
+        />
+      )}
+
       {/* Top KPI Cards (Hero) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Value - Star Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -213,17 +269,36 @@ export default function DashboardPage() {
           <div className="relative z-10">
             <p className="text-sm font-medium text-cyan-500 mb-1">Total Inventory Value</p>
             <h3 className="text-3xl font-bold tracking-tight text-foreground">
-              {totalValue.toLocaleString('en-US', { style: 'currency', currency: 'JOD' })}
+              {formatCurrency(totalValue, currency)}
             </h3>
           </div>
           <DollarSign className="absolute -bottom-4 -right-4 h-32 w-32 text-cyan-500/5 rotate-12" />
+        </motion.div>
+
+        {/* Today's Sales - Green/Emerald Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="relative overflow-hidden rounded-xl border border-emerald-500/30 bg-gradient-to-br from-card to-emerald-950/20 p-6 shadow-[0_0_20px_rgba(16,185,129,0.1)]"
+        >
+          <div className="relative z-10">
+            <p className="text-sm font-medium text-emerald-500 mb-1">Today&apos;s Sales</p>
+            <h3 className="text-3xl font-bold tracking-tight text-foreground">
+              {formatCurrency(todayRevenue, currency)}
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Daily revenue
+            </p>
+          </div>
+          <TrendingUp className="absolute -bottom-4 -right-4 h-32 w-32 text-emerald-500/5 rotate-12" />
         </motion.div>
 
         {/* Incoming Today */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          transition={{ delay: 0.2 }}
           className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card to-muted p-6"
         >
           <div className="relative z-10">
@@ -248,7 +323,7 @@ export default function DashboardPage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.3 }}
           className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-card to-muted p-6"
         >
           <div className="relative z-10">

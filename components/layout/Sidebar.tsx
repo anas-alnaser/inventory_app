@@ -17,12 +17,15 @@ import {
   Sparkles,
   LogOut,
   ChefHat,
+  ShoppingCart,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/lib/hooks/useAuth"
 import { useRouter } from "next/navigation"
+import { useStaff } from "@/lib/contexts/StaffContext"
+import { canSeeLaunchPOS, getEffectiveRole } from "@/lib/utils/role-permissions"
 
 interface SidebarItem {
   href: string
@@ -49,23 +52,16 @@ const sidebarSections: SidebarSection[] = [
         href: "/inventory",
         label: "Inventory",
         icon: <Package className="h-5 w-5" />,
-        badge: 3,
-        badgeVariant: "warning",
-      },
-      {
-        href: "/orders",
-        label: "Orders",
-        icon: <Truck className="h-5 w-5" />,
-      },
-      {
-        href: "/suppliers",
-        label: "Suppliers",
-        icon: <Truck className="h-5 w-5" />,
       },
       {
         href: "/menu-items",
         label: "Menu Items",
         icon: <ChefHat className="h-5 w-5" />,
+      },
+      {
+        href: "/suppliers",
+        label: "Suppliers",
+        icon: <Truck className="h-5 w-5" />,
       },
     ],
   },
@@ -86,19 +82,12 @@ const sidebarSections: SidebarSection[] = [
         href: "/anomalies",
         label: "Anomalies",
         icon: <AlertTriangle className="h-5 w-5" />,
-        badge: 2,
-        badgeVariant: "destructive",
       },
     ],
   },
   {
     title: "Admin",
     items: [
-      {
-        href: "/users",
-        label: "User Management",
-        icon: <Users className="h-5 w-5" />,
-      },
       {
         href: "/settings",
         label: "Settings",
@@ -116,7 +105,18 @@ export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const { userData, signOut } = useAuth()
+  const { activeStaff } = useStaff()
   const router = useRouter()
+
+  // Get effective role for permission checks
+  const effectiveRole = getEffectiveRole(
+    userData?.role,
+    activeStaff?.role,
+    userData?.is_store_device === true
+  )
+
+  // Check if user can see "Launch POS" button
+  const showLaunchPOS = canSeeLaunchPOS(effectiveRole)
 
   const handleSignOut = async () => {
     await signOut()
@@ -142,9 +142,9 @@ export function Sidebar({ className }: SidebarProps) {
               className="flex items-center gap-2"
             >
               <Link href="/dashboard" className="flex items-center gap-2">
-                <img 
-                  src="/icon.svg" 
-                  alt="StockWave" 
+                <img
+                  src="/icon.svg"
+                  alt="StockWave"
                   className="h-8 w-8 rounded-lg object-contain"
                 />
                 <span className="font-bold text-lg text-foreground">StockWave</span>
@@ -153,15 +153,15 @@ export function Sidebar({ className }: SidebarProps) {
           )}
           {collapsed && (
             <Link href="/dashboard" className="flex h-8 w-8 items-center justify-center">
-              <img 
-                src="/icon.svg" 
-                alt="StockWave" 
+              <img
+                src="/icon.svg"
+                alt="StockWave"
                 className="h-8 w-8 rounded-lg object-contain"
               />
             </Link>
           )}
         </AnimatePresence>
-        
+
         <Button
           variant="ghost"
           size="icon"
@@ -186,11 +186,11 @@ export function Sidebar({ className }: SidebarProps) {
               </h3>
             )}
             {section.title && collapsed && <Separator className="my-2" />}
-            
+
             <ul className="space-y-1">
               {section.items.map((item) => {
                 const isActive = pathname === item.href
-                
+
                 return (
                   <li key={item.href}>
                     <Link
@@ -211,7 +211,7 @@ export function Sidebar({ className }: SidebarProps) {
                       >
                         {item.icon}
                       </span>
-                      
+
                       <AnimatePresence mode="wait">
                         {!collapsed && (
                           <motion.span
@@ -230,9 +230,9 @@ export function Sidebar({ className }: SidebarProps) {
                           className={cn(
                             "ml-auto text-xs font-semibold px-2 py-0.5 rounded-full",
                             item.badgeVariant === "destructive" &&
-                              "bg-destructive/10 text-destructive",
+                            "bg-destructive/10 text-destructive",
                             item.badgeVariant === "warning" &&
-                              "bg-warning/10 text-warning",
+                            "bg-warning/10 text-warning",
                             !item.badgeVariant && "bg-muted text-muted-foreground"
                           )}
                         >
@@ -265,6 +265,53 @@ export function Sidebar({ className }: SidebarProps) {
             </ul>
           </div>
         ))}
+
+        {/* Launch POS Button - visible only for Manager/Supervisor/Owner/Cashier */}
+        {showLaunchPOS && (
+          <div className="mb-4">
+            <Separator className="my-2" />
+            <Link
+              href="/pos"
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors relative group",
+                pathname === "/pos"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+              title={collapsed ? "Launch POS" : undefined}
+            >
+              <span
+                className={cn(
+                  "shrink-0",
+                  pathname === "/pos" && "text-primary"
+                )}
+              >
+                <ShoppingCart className="h-5 w-5" />
+              </span>
+
+              <AnimatePresence mode="wait">
+                {!collapsed && (
+                  <motion.span
+                    initial={{ opacity: 0, width: 0 }}
+                    animate={{ opacity: 1, width: "auto" }}
+                    exit={{ opacity: 0, width: 0 }}
+                    className="truncate"
+                  >
+                    Launch POS
+                  </motion.span>
+                )}
+              </AnimatePresence>
+
+              {/* Active indicator */}
+              {pathname === "/pos" && (
+                <motion.div
+                  layoutId="sidebarActiveIndicator"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-primary"
+                />
+              )}
+            </Link>
+          </div>
+        )}
       </nav>
 
       {/* Footer */}

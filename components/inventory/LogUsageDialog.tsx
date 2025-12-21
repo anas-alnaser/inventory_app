@@ -29,7 +29,9 @@ interface LogUsageDialogProps {
   onOpenChange: (open: boolean) => void
   inventory: InventoryItem[]
   userId: string
+  branchId: string
   onSuccess?: () => void
+  preselectedIngredientId?: string
 }
 
 export function LogUsageDialog({
@@ -37,7 +39,9 @@ export function LogUsageDialog({
   onOpenChange,
   inventory,
   userId,
+  branchId,
   onSuccess,
+  preselectedIngredientId,
 }: LogUsageDialogProps) {
   const [selectedIngredientId, setSelectedIngredientId] = useState<string>("")
   const [usageQuantity, setUsageQuantity] = useState(0)
@@ -55,10 +59,14 @@ export function LogUsageDialog({
       setUsageUnit("kg")
       setUsageBaseQuantity(0)
       setUsageReason("consumption")
-    } else if (selectedItem) {
+    } else if (open && preselectedIngredientId) {
+      setSelectedIngredientId(preselectedIngredientId)
+    }
+
+    if (selectedItem) {
       setUsageUnit(selectedItem.ingredient.unit)
     }
-  }, [open, selectedItem])
+  }, [open, selectedItem, preselectedIngredientId])
 
   const getUnitType = (unit: string): "weight" | "volume" | "count" => {
     if (["g", "kg", "sack_10kg", "sack_25kg", "sack_50kg"].includes(unit)) {
@@ -79,6 +87,7 @@ export function LogUsageDialog({
       // Use negative change amount for usage/waste
       return updateStockTransaction(
         data.ingredient_id,
+        branchId,
         -data.baseQuantity,
         userId,
         data.reason,

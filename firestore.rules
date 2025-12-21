@@ -9,12 +9,15 @@ service cloud.firestore {
     
     // Helper function to get user document
     function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return userDoc != null && userDoc.data != null ? userDoc.data : null;
     }
     
     // Helper function to check user role
     function hasRole(role) {
-      return isAuthenticated() && getUserData().role == role;
+      return isAuthenticated() && 
+        getUserData() != null && 
+        getUserData().role == role;
     }
     
     // Helper function to check if user is admin or owner (full access)
@@ -30,6 +33,12 @@ service cloud.firestore {
     // Helper function to check if user can manage stock
     function canManageStock() {
       return isAdminOrManager() || hasRole('stock_keeper');
+    }
+    
+    // Helper function to check if user is a store device
+    function isStoreDevice() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return userDoc != null && userDoc.data != null && userDoc.data.is_store_device == true;
     }
     
     // Users collection
@@ -84,12 +93,16 @@ service cloud.firestore {
       // All authenticated users can read
       allow read: if isAuthenticated();
       // Stock keepers and above can create/update
+      // Also allow authenticated users to create/update for sales and usage/waste (quantity can decrease or be negative)
       // Validate that quantity is a number
-      allow create: if canManageStock() && 
+      allow create: if isAuthenticated() && 
         request.resource.data.quantity is number;
-      allow update: if canManageStock() && 
-        (request.resource.data.quantity == resource.data.quantity ||
-         (request.resource.data.quantity is number));
+      allow update: if isAuthenticated() && 
+        request.resource.data.quantity is number &&
+        // Allow updates if:
+        // - Quantity is decreasing (sales, usage, waste) OR
+        // - User can manage stock (can increase for restocking)
+        (!resource.exists || request.resource.data.quantity <= resource.data.quantity || canManageStock());
       // Only Admin/Owner can delete
       allow delete: if isAdminOrOwner();
     }
@@ -98,8 +111,18 @@ service cloud.firestore {
     match /stock_logs/{logId} {
       // All authenticated users can read
       allow read: if isAuthenticated();
-      // Stock keepers and above can create
-      allow create: if canManageStock();
+      // Allow authenticated users to create logs for:
+      // - Sales (reason == 'sale')
+      // - Usage/waste reasons (consumption, waste, expired, adjustment, correction)
+      // - Stock keepers and above can create any log
+      allow create: if isAuthenticated() && 
+        (request.resource.data.reason == 'sale' || 
+         request.resource.data.reason == 'consumption' ||
+         request.resource.data.reason == 'waste' ||
+         request.resource.data.reason == 'expired' ||
+         request.resource.data.reason == 'adjustment' ||
+         request.resource.data.reason == 'correction' ||
+         canManageStock());
       // Only Admin/Owner can update/delete
       allow update, delete: if isAdminOrOwner();
     }
@@ -219,6 +242,119 @@ service cloud.firestore {
       // Only Admin/Owner/Manager can read
       allow read: if isAdminOrManager();
       // System can create
+      allow create: if isAuthenticated();
+      // Only Admin/Owner can update/delete
+      allow update, delete: if isAdminOrOwner();
+    }
+    
+    // Restaurants collection
+    match /restaurants/{restaurantId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // Admin/Owner/Manager can create/update
+      allow create, update: if isAdminOrManager();
+      // Only Admin/Owner can delete
+      allow delete: if isAdminOrOwner();
+    }
+    
+    // Invoices collection
+    match /invoices/{invoiceId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // All authenticated users can create (for POS sales)
+      allow create: if isAuthenticated();
+      // Only Admin/Owner can update/delete
+      allow update, delete: if isAdminOrOwner();
+    }
+    
+    // Shifts collection
+    match /shifts/{shiftId} {
+      // Users can read their own shifts, admins/owners can read all
+      // Store devices can read shifts for any staff member
+      allow read: if isAuthenticated() && (
+        resource.data.staffId == request.auth.uid ||
+        isAdminOrOwner() ||
+        isStoreDevice()
+      );
+      // Authenticated users can create shifts for themselves
+      // Store devices can create shifts for any staff member
+      allow create: if isAuthenticated() && (
+        request.resource.data.staffId == request.auth.uid ||
+        isStoreDevice()
+      );
+      // Users can update their own open shifts, admins/owners can update any
+      // Store devices can update shifts for any staff member
+      allow update: if isAuthenticated() && (
+        isAdminOrOwner() ||
+        (resource.data.staffId == request.auth.uid && 
+         resource.data.status == 'open') ||
+        (isStoreDevice() && resource.data.status == 'open')
+      );
+      // Only Admin/Owner can delete
+      allow delete: if isAdminOrOwner();
+    }
+    
+    // Attendance collection
+    match /attendance/{attendanceId} {
+      // Users can read their own attendance, admins/owners can read all
+      allow read: if isAuthenticated() && (
+        resource.data.staffId == request.auth.uid ||
+        isAdminOrOwner() ||
+        isStoreDevice()
+      );
+      // Authenticated users can create attendance records for themselves
+      // Store devices can create attendance for any staff member
+      allow create: if isAuthenticated() && (
+        request.resource.data.staffId == request.auth.uid ||
+        isStoreDevice()
+      );
+      // Users can update their own active attendance (no clockOut), admins/owners can update any
+      // Store devices can update attendance for any staff member
+      allow update: if isAuthenticated() && (
+        isAdminOrOwner() ||
+        (resource.data.staffId == request.auth.uid &&
+         resource.data.clockOut == null) ||
+        (isStoreDevice() && resource.data.clockOut == null)
+      );
+      // Only Admin/Owner can delete
+      allow delete: if isAdminOrOwner();
+    }
+    
+    // Hold Orders collection (for holding POS orders)
+    match /hold_orders/{orderId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // All authenticated users can create (for POS)
+      allow create: if isAuthenticated();
+      // All authenticated users can update/delete (recall orders)
+      allow update, delete: if isAuthenticated();
+    }
+    
+    // EOD Reports collection
+    match /eod_reports/{reportId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // All authenticated users can create (generate reports)
+      allow create: if isAuthenticated();
+      // Only Admin/Owner can update/delete
+      allow update, delete: if isAdminOrOwner();
+    }
+    
+    // Refunds collection
+    match /refunds/{refundId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // All authenticated users can create (process refunds)
+      allow create: if isAuthenticated();
+      // Only Admin/Owner can update/delete
+      allow update, delete: if isAdminOrOwner();
+    }
+    
+    // Drawer Events collection (cash drawer operations)
+    match /drawer_events/{eventId} {
+      // All authenticated users can read
+      allow read: if isAuthenticated();
+      // All authenticated users can create (cash drawer operations)
       allow create: if isAuthenticated();
       // Only Admin/Owner can update/delete
       allow update, delete: if isAdminOrOwner();

@@ -78,12 +78,12 @@ const userFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["owner", "admin", "manager", "stock_keeper"]),
+  role: z.enum(["owner", "manager", "stock_manager", "supervisor", "cashier"]),
 })
 
 type UserFormData = z.infer<typeof userFormSchema>
 
-const roleConfig: Record<UserRole, { label: string; icon: React.ReactNode; color: string }> = {
+const roleConfig: Record<UserRole | 'admin', { label: string; icon: React.ReactNode; color: string }> = {
   owner: {
     label: "Owner",
     icon: <Crown className="h-3 w-3" />,
@@ -99,11 +99,28 @@ const roleConfig: Record<UserRole, { label: string; icon: React.ReactNode; color
     icon: <ShieldCheck className="h-3 w-3" />,
     color: "bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400",
   },
-  stock_keeper: {
-    label: "Stock Keeper",
+  stock_manager: {
+    label: "Stock Manager",
     icon: <Shield className="h-3 w-3" />,
     color: "bg-green-500/10 text-green-600 border-green-500/20 dark:text-green-400",
   },
+  supervisor: {
+    label: "Supervisor",
+    icon: <ShieldCheck className="h-3 w-3" />,
+    color: "bg-cyan-500/10 text-cyan-600 border-cyan-500/20 dark:text-cyan-400",
+  },
+  cashier: {
+    label: "Cashier",
+    icon: <UserCircle className="h-3 w-3" />,
+    color: "bg-orange-500/10 text-orange-600 border-orange-500/20 dark:text-orange-400",
+  },
+}
+
+// Default config for unknown roles
+const defaultRoleConfig = {
+  label: "Unknown",
+  icon: <UserCircle className="h-3 w-3" />,
+  color: "bg-gray-500/10 text-gray-600 border-gray-500/20 dark:text-gray-400",
 }
 
 function UserTableSkeleton() {
@@ -156,7 +173,7 @@ export default function UsersPage() {
   } = useForm<UserFormData>({
     resolver: zodResolver(userFormSchema),
     defaultValues: {
-      role: "stock_keeper",
+      role: "stock_manager",
     },
   })
 
@@ -343,9 +360,10 @@ export default function UsersPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="stock_keeper">Stock Keeper</SelectItem>
+                      <SelectItem value="stock_manager">Stock Manager</SelectItem>
                       <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="supervisor">Supervisor</SelectItem>
+                      <SelectItem value="cashier">Cashier</SelectItem>
                       {userData?.role === "owner" && (
                         <SelectItem value="owner">Owner</SelectItem>
                       )}
@@ -387,9 +405,9 @@ export default function UsersPage() {
         </Card>
         <Card className="p-4">
           <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-            {users.filter((u) => u.role === "stock_keeper").length}
+            {users.filter((u) => u.role === "stock_manager").length}
           </p>
-          <p className="text-sm text-muted-foreground">Stock Keepers</p>
+          <p className="text-sm text-muted-foreground">Stock Managers</p>
         </Card>
         <Card className="p-4">
           <p className="text-2xl font-bold text-foreground">
@@ -427,7 +445,7 @@ export default function UsersPage() {
               </TableHeader>
               <TableBody>
                 {filteredUsers.map((user) => {
-                  const config = roleConfig[user.role]
+                  const config = roleConfig[user.role as keyof typeof roleConfig] || defaultRoleConfig
                   const initials = user.name
                     .split(" ")
                     .map((n) => n[0])
@@ -491,7 +509,7 @@ export default function UsersPage() {
           <UserTableSkeleton />
         ) : (
           filteredUsers.map((user, index) => {
-            const config = roleConfig[user.role]
+            const config = roleConfig[user.role as keyof typeof roleConfig] || defaultRoleConfig
             const initials = user.name
               .split(" ")
               .map((n) => n[0])

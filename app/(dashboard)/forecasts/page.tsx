@@ -13,7 +13,8 @@ import {
   RefreshCw,
   ChevronRight,
   Clock,
-  Lightbulb
+  Lightbulb,
+  ShoppingCart
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -38,6 +39,7 @@ import {
 import { toast } from "@/lib/hooks/use-toast"
 import { generateAllForecasts, type ForecastResult } from "@/lib/ai/forecast"
 import { getIngredients, getAllStock } from "@/lib/services"
+import { useAuth } from "@/lib/hooks/useAuth"
 import { 
   generateForecast as generateAIForecast, 
   getMenuDrivenForecast,
@@ -46,8 +48,11 @@ import {
   type ExpiryRisk,
   type MenuDrivenForecastItem
 } from "@/lib/services/ai-functions"
+import { generateWeeklyShoppingList, type WeeklyShoppingList } from "@/lib/services/shopping-list"
+import { WeeklyShoppingListDialog } from "@/components/dashboard/WeeklyShoppingList"
 import { formatSmartQuantity } from "@/lib/utils/unit-conversion"
 import { cn } from "@/lib/utils"
+import { ENABLE_CLOUD_AI } from "@/lib/config/ai-status"
 import Link from "next/link"
 
 function ForecastTableSkeleton() {
@@ -133,8 +138,11 @@ function ExpiryRiskCard({ risk, ingredientName }: { risk: ExpiryRisk; ingredient
 }
 
 export default function ForecastsPage() {
+  const { userData } = useAuth()
   const [selectedIngredient, setSelectedIngredient] = useState<string | null>(null)
   const [parLevelData, setParLevelData] = useState<any>(null)
+  const [shoppingList, setShoppingList] = useState<WeeklyShoppingList | null>(null)
+  const [isGeneratingShoppingList, setIsGeneratingShoppingList] = useState(false)
 
   // Fetch ingredients
   const { data: ingredients = [] } = useQuery({
@@ -144,8 +152,14 @@ export default function ForecastsPage() {
 
   // Fetch all stock
   const { data: stockItems = [] } = useQuery({
-    queryKey: ["all-stock"],
-    queryFn: () => getAllStock(),
+    queryKey: ["all-stock", userData?.branchId],
+    queryFn: () => {
+      if (!userData?.branchId) {
+        throw new Error('Branch ID is required')
+      }
+      return getAllStock(userData.branchId)
+    },
+    enabled: !!userData?.branchId,
   })
 
   // Generate local forecasts
@@ -155,10 +169,13 @@ export default function ForecastsPage() {
     refetchInterval: 60000,
   })
 
-  // Fetch expiry risks
+  // Fetch expiry risks (only if Cloud AI is enabled)
   const { data: expiryRisksData, isLoading: expiryLoading } = useQuery({
     queryKey: ["expiry-risks"],
     queryFn: async () => {
+      if (!ENABLE_CLOUD_AI) {
+        return { success: false, risks: [] }
+      }
       try {
         return await getExpiryRisks()
       } catch (error) {
@@ -167,12 +184,16 @@ export default function ForecastsPage() {
       }
     },
     refetchInterval: 300000, // 5 minutes
+    enabled: ENABLE_CLOUD_AI,
   })
 
-  // Fetch menu-driven forecast
+  // Fetch menu-driven forecast (only if Cloud AI is enabled)
   const { data: menuForecastData, isLoading: menuForecastLoading } = useQuery({
     queryKey: ["menu-forecast"],
     queryFn: async () => {
+      if (!ENABLE_CLOUD_AI) {
+        return { success: false, requirements: [], days: 7 }
+      }
       try {
         return await getMenuDrivenForecast(7)
       } catch (error) {
@@ -181,11 +202,15 @@ export default function ForecastsPage() {
       }
     },
     refetchInterval: 300000,
+    enabled: ENABLE_CLOUD_AI,
   })
 
-  // Par level mutation
+  // Par level mutation (only if Cloud AI is enabled)
   const parLevelMutation = useMutation({
     mutationFn: async (ingredientId: string) => {
+      if (!ENABLE_CLOUD_AI) {
+        throw new Error("Par level recommendations require Cloud AI subscription")
+      }
       return await getParLevelRecommendation(ingredientId, 3)
     },
     onSuccess: (data) => {
@@ -230,21 +255,76 @@ export default function ForecastsPage() {
     parLevelMutation.mutate(ingredientId)
   }
 
+  const handleGenerateShoppingList = async () => {
+    setIsGeneratingShoppingList(true)
+    try {
+      if (!userData?.branchId) {
+        throw new Error('Branch ID is required')
+      }
+      const list = await generateWeeklyShoppingList(userData.branchId)
+      setShoppingList(list)
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate shopping list",
+        variant: "destructive",
+      })
+    } finally {
+      setIsGeneratingShoppingList(false)
+    }
+  }
+
   const expiryRisks = expiryRisksData?.risks || []
   const menuRequirements = menuForecastData?.requirements || []
 
   return (
     <div className="px-4 py-6 md:px-6 lg:px-8 space-y-6">
+      {/* Local Mode Banner */}
+      {!ENABLE_CLOUD_AI && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-foreground">Local Mode</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Using local forecasting algorithm (Moving Average). Cloud AI features require subscription.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">AI Forecasts</h1>
-          <p className="text-muted-foreground">Predictive analytics powered by AI</p>
+          <p className="text-muted-foreground">
+            {ENABLE_CLOUD_AI ? "Predictive analytics powered by AI" : "Local forecasting based on usage patterns"}
+          </p>
         </div>
-        <Button onClick={() => refetchForecasts()} variant="outline" className="gap-2">
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={handleGenerateShoppingList} 
+            disabled={isGeneratingShoppingList}
+            className="gap-2"
+          >
+            <ShoppingCart className="h-4 w-4" />
+            {isGeneratingShoppingList ? "Generating..." : "Generate Shopping List"}
+          </Button>
+          <Button onClick={() => refetchForecasts()} variant="outline" className="gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -304,8 +384,12 @@ export default function ForecastsPage() {
       <Tabs defaultValue="runout" className="space-y-4">
         <TabsList>
           <TabsTrigger value="runout">Run-out Predictions</TabsTrigger>
-          <TabsTrigger value="menu">Menu-Driven</TabsTrigger>
-          <TabsTrigger value="expiry">Expiry Risks</TabsTrigger>
+          {ENABLE_CLOUD_AI && (
+            <>
+              <TabsTrigger value="menu">Menu-Driven</TabsTrigger>
+              <TabsTrigger value="expiry">Expiry Risks</TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         {/* Run-out Predictions Tab */}
@@ -443,13 +527,15 @@ export default function ForecastsPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleViewParLevels(forecast.ingredientId)}
-                              >
-                                Par Levels
-                              </Button>
+                              {ENABLE_CLOUD_AI && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleViewParLevels(forecast.ingredientId)}
+                                >
+                                  Par Levels
+                                </Button>
+                              )}
                               {isCritical && (
                                 <Link href="/suppliers">
                                   <Button size="sm" variant="destructive">
@@ -470,19 +556,20 @@ export default function ForecastsPage() {
         </TabsContent>
 
         {/* Menu-Driven Forecast Tab */}
-        <TabsContent value="menu" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                Menu-Driven Ingredient Forecast
-              </CardTitle>
-              <CardDescription>
-                Predicted ingredient requirements based on expected menu item sales for the next 7 days
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {menuForecastLoading ? (
+        {ENABLE_CLOUD_AI && (
+          <TabsContent value="menu" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  Menu-Driven Ingredient Forecast
+                </CardTitle>
+                <CardDescription>
+                  Predicted ingredient requirements based on expected menu item sales for the next 7 days
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {menuForecastLoading ? (
                 <div className="space-y-3">
                   {[...Array(5)].map((_, i) => (
                     <div key={i} className="flex items-center gap-4">
@@ -543,10 +630,12 @@ export default function ForecastsPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+          </TabsContent>
+        )}
 
         {/* Expiry Risks Tab */}
-        <TabsContent value="expiry" className="space-y-4">
+        {ENABLE_CLOUD_AI && (
+          <TabsContent value="expiry" className="space-y-4">
           {expiryLoading ? (
             <div className="space-y-3">
               {[...Array(3)].map((_, i) => (
@@ -594,8 +683,17 @@ export default function ForecastsPage() {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
+          </TabsContent>
+        )}
       </Tabs>
+
+      {/* Shopping List Dialog */}
+      {shoppingList && (
+        <WeeklyShoppingListDialog
+          shoppingList={shoppingList}
+          onClose={() => setShoppingList(null)}
+        />
+      )}
 
       {/* Par Level Dialog */}
       <Dialog open={!!selectedIngredient} onOpenChange={() => setSelectedIngredient(null)}>

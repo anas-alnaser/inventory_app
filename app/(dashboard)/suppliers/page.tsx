@@ -21,6 +21,7 @@ import {
   MessageSquare,
   Trash2,
   AlertTriangle,
+  Pencil,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -53,10 +54,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
+import { EmptyState } from "@/components/ui/empty-state"
 import { toast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/hooks/useAuth"
 import { getSuppliers, createSupplier, deleteSupplier, type CreateSupplierData } from "@/lib/services"
+import { EditSupplierDialog } from "@/components/suppliers/EditSupplierDialog"
 import type { Supplier } from "@/types/entities"
 
 const supplierFormSchema = z.object({
@@ -100,6 +103,8 @@ export default function SuppliersPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null)
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null)
 
   const {
@@ -244,79 +249,79 @@ export default function SuppliersPage() {
               Add Supplier
             </Button>
           </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Add New Supplier</DialogTitle>
-                <DialogDescription>
-                  Add a new supplier to your directory.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Company Name</Label>
-                  <Input
-                    id="name"
-                    placeholder="Enter supplier name"
-                    {...register("name")}
-                  />
-                  {errors.name && (
-                    <p className="text-sm text-destructive">{errors.name.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    placeholder="+962 7X XXX XXXX"
-                    {...register("phone")}
-                  />
-                  {errors.phone && (
-                    <p className="text-sm text-destructive">{errors.phone.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="orders@supplier.com"
-                    {...register("email")}
-                  />
-                  {errors.email && (
-                    <p className="text-sm text-destructive">{errors.email.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contact_person">Contact Person (Optional)</Label>
-                  <Input
-                    id="contact_person"
-                    placeholder="Contact name"
-                    {...register("contact_person")}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address">Address (Optional)</Label>
-                  <Input
-                    id="address"
-                    placeholder="Supplier address"
-                    {...register("address")}
-                  />
-                </div>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsAddOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={createSupplierMutation.isPending}>
-                    {createSupplierMutation.isPending ? "Adding..." : "Add Supplier"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Add New Supplier</DialogTitle>
+              <DialogDescription>
+                Add a new supplier to your directory.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Company Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Enter supplier name"
+                  {...register("name")}
+                />
+                {errors.name && (
+                  <p className="text-sm text-destructive">{errors.name.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input
+                  id="phone"
+                  placeholder="+962 7X XXX XXXX"
+                  {...register("phone")}
+                />
+                {errors.phone && (
+                  <p className="text-sm text-destructive">{errors.phone.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="orders@supplier.com"
+                  {...register("email")}
+                />
+                {errors.email && (
+                  <p className="text-sm text-destructive">{errors.email.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contact_person">Contact Person (Optional)</Label>
+                <Input
+                  id="contact_person"
+                  placeholder="Contact name"
+                  {...register("contact_person")}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="address">Address (Optional)</Label>
+                <Input
+                  id="address"
+                  placeholder="Supplier address"
+                  {...register("address")}
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsAddOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createSupplierMutation.isPending}>
+                  {createSupplierMutation.isPending ? "Adding..." : "Add Supplier"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Search */}
@@ -337,6 +342,16 @@ export default function SuppliersPage() {
             <SupplierCardSkeleton key={i} />
           ))}
         </div>
+      ) : filteredSuppliers.length === 0 ? (
+        <EmptyState
+          icon={Truck}
+          title="No Suppliers Yet"
+          description={searchQuery
+            ? `No suppliers match "${searchQuery}"`
+            : "Add your first supplier to start managing your procurement"}
+          actionLabel="Add Supplier"
+          onAction={() => setIsAddOpen(true)}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredSuppliers.map((supplier, index) => (
@@ -376,6 +391,13 @@ export default function SuppliersPage() {
                         }}>
                           <ExternalLink className="mr-2 h-4 w-4" />
                           View Profile
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
+                          setSupplierToEdit(supplier)
+                          setIsEditDialogOpen(true)
+                        }}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit Supplier
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleEmail(supplier.email)}>
                           <Mail className="mr-2 h-4 w-4" />
@@ -423,7 +445,7 @@ export default function SuppliersPage() {
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Calendar className="h-4 w-4 shrink-0" />
                         <span>
-                          Delivers: {Array.isArray(supplier.delivery_days) 
+                          Delivers: {Array.isArray(supplier.delivery_days)
                             ? supplier.delivery_days.join(", ")
                             : supplier.delivery_days}
                         </span>
@@ -464,27 +486,6 @@ export default function SuppliersPage() {
         </div>
       )}
 
-      {/* Empty State */}
-      {!isLoading && filteredSuppliers.length === 0 && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex flex-col items-center justify-center py-16 text-center"
-        >
-          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-            <Truck className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h2 className="text-lg font-semibold text-foreground mb-2">
-            No suppliers found
-          </h2>
-          <p className="text-muted-foreground max-w-sm">
-            {searchQuery
-              ? `No suppliers match "${searchQuery}"`
-              : "Start by adding suppliers to your directory"}
-          </p>
-        </motion.div>
-      )}
-
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
@@ -507,6 +508,18 @@ export default function SuppliersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Supplier Dialog */}
+      {supplierToEdit && (
+        <EditSupplierDialog
+          supplier={supplierToEdit}
+          open={isEditDialogOpen}
+          onOpenChange={(open) => {
+            setIsEditDialogOpen(open)
+            if (!open) setSupplierToEdit(null)
+          }}
+        />
+      )}
     </div>
   )
 }

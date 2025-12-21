@@ -25,7 +25,11 @@ import type {
   Anomaly,
   VisionSnapshot,
   AnalyticsCache,
-  SystemLog
+  SystemLog,
+  Restaurant,
+  Invoice,
+  Shift,
+  Attendance
 } from '@/types/entities';
 
 // Collection references
@@ -48,6 +52,10 @@ export const anomaliesCollection = collection(db, 'anomalies') as CollectionRefe
 export const visionSnapshotsCollection = collection(db, 'vision_snapshots') as CollectionReference<VisionSnapshot>;
 export const analyticsCacheCollection = collection(db, 'analytics_cache') as CollectionReference<AnalyticsCache>;
 export const systemLogsCollection = collection(db, 'system_logs') as CollectionReference<SystemLog>;
+export const restaurantsCollection = collection(db, 'restaurants') as CollectionReference<Restaurant>;
+export const invoicesCollection = collection(db, 'invoices') as CollectionReference<Invoice>;
+export const shiftsCollection = collection(db, 'shifts') as CollectionReference<Shift>;
+export const attendanceCollection = collection(db, 'attendance') as CollectionReference<Attendance>;
 
 // Helper functions to get document references
 export const getBranchRef = (id: string) => doc(db, 'branches', id) as DocumentReference<Branch>;
@@ -58,6 +66,10 @@ export const getMenuItemRef = (id: string) => doc(db, 'menu_items', id) as Docum
 export const getPurchaseOrderRef = (id: string) => doc(db, 'purchase_orders', id) as DocumentReference<PurchaseOrder>;
 export const getIngredientStockRef = (id: string) => doc(db, 'ingredient_stock', id) as DocumentReference<IngredientStock>;
 export const getPOSOrderRef = (id: string) => doc(db, 'pos_orders', id) as DocumentReference<POSOrder>;
+export const getRestaurantRef = (id: string) => doc(db, 'restaurants', id) as DocumentReference<Restaurant>;
+export const getInvoiceRef = (id: string) => doc(db, 'invoices', id) as DocumentReference<Invoice>;
+export const getShiftRef = (id: string) => doc(db, 'shifts', id) as DocumentReference<Shift>;
+export const getAttendanceRef = (id: string) => doc(db, 'attendance', id) as DocumentReference<Attendance>;
 
 // Subcollection helpers
 export const getPurchaseOrderItemsRef = (purchaseOrderId: string) => 

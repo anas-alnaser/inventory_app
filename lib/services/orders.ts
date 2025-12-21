@@ -26,6 +26,7 @@ const purchaseOrdersRef = collection(db, 'purchase_orders');
 export interface CreatePurchaseOrderData {
   supplier_id: string;
   supplier_name: string;
+  branchId: string; // Required for data isolation
   items: {
     ingredient_id: string;
     name: string;
@@ -40,6 +41,11 @@ export interface CreatePurchaseOrderData {
 }
 
 export async function createPurchaseOrder(data: CreatePurchaseOrderData): Promise<string> {
+  // Validate branchId is provided
+  if (!data.branchId) {
+    throw new Error('branchId is required for data isolation');
+  }
+
   // Generate PO Number (PO-YYYYMMDD-XXXX)
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
@@ -47,20 +53,42 @@ export async function createPurchaseOrder(data: CreatePurchaseOrderData): Promis
 
   const totalCost = data.items.reduce((sum, item) => sum + item.total_cost, 0);
 
-  const docRef = await addDoc(purchaseOrdersRef, {
-    ...data,
+  // Prepare document data, omitting undefined fields
+  const orderData: any = {
+    supplier_id: data.supplier_id,
+    supplier_name: data.supplier_name,
+    branch_id: data.branchId,
+    items: data.items,
+    expected_delivery_date: Timestamp.fromDate(data.expected_delivery_date),
+    status: data.status,
     po_number: poNumber,
     total_cost: totalCost,
-    expected_delivery_date: Timestamp.fromDate(data.expected_delivery_date),
     created_at: serverTimestamp(),
     updated_at: serverTimestamp(),
-  });
+  };
+
+  // Only include notes if it's provided and not undefined
+  if (data.notes !== undefined && data.notes !== null) {
+    orderData.notes = data.notes;
+  }
+
+  const docRef = await addDoc(purchaseOrdersRef, orderData);
   
   return docRef.id;
 }
 
-export async function getPurchaseOrders(statusFilter?: 'active' | 'history'): Promise<PurchaseOrder[]> {
-  let constraints: QueryConstraint[] = [orderBy('created_at', 'desc')];
+export async function getPurchaseOrders(
+  branchId: string,
+  statusFilter?: 'active' | 'history'
+): Promise<PurchaseOrder[]> {
+  if (!branchId) {
+    throw new Error('branchId is required for data isolation');
+  }
+
+  let constraints: QueryConstraint[] = [
+    where('branch_id', '==', branchId),
+    orderBy('created_at', 'desc')
+  ];
   
   // Debugging: Show all orders regardless of status
   // if (statusFilter === 'active') {
@@ -94,22 +122,30 @@ export async function getPurchaseOrderById(id: string): Promise<PurchaseOrder | 
   return null;
 }
 
-export async function getPurchaseOrdersBySupplier(supplierId: string): Promise<PurchaseOrder[]> {
+export async function getPurchaseOrdersBySupplier(
+  supplierId: string,
+  branchId: string
+): Promise<PurchaseOrder[]> {
+  if (!branchId) {
+    throw new Error('branchId is required for data isolation');
+  }
+
   const q = query(
     purchaseOrdersRef, 
     where('supplier_id', '==', supplierId),
+    where('branch_id', '==', branchId),
     orderBy('created_at', 'desc')
   );
   const snapshot = await getDocs(q);
-  console.log('Querying orders for supplier_id:', supplierId, 'Found:', snapshot.size);
+  console.log('Querying orders for supplier_id:', supplierId, 'branchId:', branchId, 'Found:', snapshot.size);
   return snapshot.docs.map((docSnap) => ({
     id: docSnap.id,
     ...(docSnap.data() as object),
   })) as PurchaseOrder[];
 }
 
-export async function getOrdersBySupplier(supplierId: string): Promise<PurchaseOrder[]> {
-    return getPurchaseOrdersBySupplier(supplierId);
+export async function getOrdersBySupplier(supplierId: string, branchId: string): Promise<PurchaseOrder[]> {
+    return getPurchaseOrdersBySupplier(supplierId, branchId);
 }
 
 export async function updatePurchaseOrder(
@@ -134,7 +170,11 @@ export async function updatePurchaseOrder(
   await updateDoc(docRef, updateData);
 }
 
-export async function receivePurchaseOrder(id: string, userId: string): Promise<void> {
+export async function receivePurchaseOrder(id: string, userId: string, branchId: string): Promise<void> {
+  if (!branchId) {
+    throw new Error('branchId is required for data isolation');
+  }
+
   const poRef = doc(purchaseOrdersRef, id);
   
   // Fetch PO first to get items for stockMap
@@ -144,11 +184,22 @@ export async function receivePurchaseOrder(id: string, userId: string): Promise<
   }
   const po = poDocSnap.data() as PurchaseOrder;
 
+  // Verify PO belongs to the correct branch
+  if (po.branch_id !== branchId) {
+    throw new Error("Purchase Order does not belong to the specified branch");
+  }
+
   // We can query all stock items *before* the transaction to get their IDs.
+  // Filter by branchId for data isolation
   const stockMap = new Map<string, string>(); // ingredientId -> stockDocId
   
   for (const item of po.items) {
-    const q = query(ingredientStockRef, where('ingredient_id', '==', item.ingredient_id), limit(1));
+    const q = query(
+      ingredientStockRef,
+      where('ingredient_id', '==', item.ingredient_id),
+      where('branch_id', '==', branchId),
+      limit(1)
+    );
     const snap = await getDocs(q);
     if (!snap.empty) {
       stockMap.set(item.ingredient_id, snap.docs[0].id);
@@ -199,6 +250,7 @@ export async function receivePurchaseOrder(id: string, userId: string): Promise<
         const newStockRef = doc(ingredientStockRef); // Auto-ID for new stock
         transaction.set(newStockRef, {
           ingredient_id: item.ingredient_id,
+          branch_id: branchId,
           quantity: baseQuantity,
           last_updated: serverTimestamp(),
           expiry_date: null // Default
@@ -209,6 +261,7 @@ export async function receivePurchaseOrder(id: string, userId: string): Promise<
       const logRef = doc(stockLogsRef); // New doc, auto ID
       transaction.set(logRef, {
         ingredient_id: item.ingredient_id,
+        branch_id: branchId,
         user_id: userId,
         change_amount: baseQuantity,
         reason: 'purchase',

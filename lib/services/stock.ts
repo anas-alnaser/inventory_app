@@ -27,8 +27,16 @@ export interface StockWithIngredient extends IngredientStock {
   ingredient?: Ingredient;
 }
 
-export async function getAllStock(): Promise<StockWithIngredient[]> {
-  const q = query(ingredientStockRef, orderBy('last_updated', 'desc'));
+export async function getAllStock(branchId: string): Promise<StockWithIngredient[]> {
+  if (!branchId) {
+    throw new Error('branchId is required for data isolation');
+  }
+
+  const q = query(
+    ingredientStockRef,
+    where('branch_id', '==', branchId),
+    orderBy('last_updated', 'desc')
+  );
   const snapshot = await getDocs(q);
   const stocks = snapshot.docs.map((docSnap) => ({
     id: docSnap.id,
@@ -50,11 +58,17 @@ export async function getAllStock(): Promise<StockWithIngredient[]> {
 }
 
 export async function getStockByIngredient(
-  ingredientId: string
+  ingredientId: string,
+  branchId: string
 ): Promise<IngredientStock | null> {
+  if (!branchId) {
+    throw new Error('branchId is required for data isolation');
+  }
+
   const q = query(
     ingredientStockRef,
     where('ingredient_id', '==', ingredientId),
+    where('branch_id', '==', branchId),
     limit(1)
   );
   const snapshot = await getDocs(q);
@@ -65,6 +79,7 @@ export async function getStockByIngredient(
 
 export interface AddStockData {
   ingredient_id: string;
+  branchId: string; // Required for data isolation
   quantity: number;
   unit: string;
   expiry_date?: Date;
@@ -73,11 +88,15 @@ export interface AddStockData {
 }
 
 export async function addStock(data: AddStockData): Promise<void> {
+  if (!data.branchId) {
+    throw new Error('branchId is required for data isolation');
+  }
+
   // Convert to base units
   const baseQuantity = toBaseUnit(data.quantity, data.unit);
 
-  // Check if stock record exists
-  const existingStock = await getStockByIngredient(data.ingredient_id);
+  // Check if stock record exists (filtered by branchId)
+  const existingStock = await getStockByIngredient(data.ingredient_id, data.branchId);
 
   const batch = writeBatch(db);
 
@@ -92,30 +111,45 @@ export async function addStock(data: AddStockData): Promise<void> {
   } else {
     // Create new stock record
     const newStockRef = doc(ingredientStockRef);
-    batch.set(newStockRef, {
+    const newStockData: any = {
       ingredient_id: data.ingredient_id,
+      branch_id: data.branchId,
       quantity: baseQuantity,
-      expiry_date: data.expiry_date ? Timestamp.fromDate(data.expiry_date) : null,
       last_updated: serverTimestamp(),
-    });
+    };
+    
+    // Only add expiry_date if provided
+    if (data.expiry_date) {
+      newStockData.expiry_date = Timestamp.fromDate(data.expiry_date);
+    }
+    
+    batch.set(newStockRef, newStockData);
   }
 
   // Create stock log
   const logRef = doc(stockLogsRef);
-  batch.set(logRef, {
+  const logData: any = {
     ingredient_id: data.ingredient_id,
+    branch_id: data.branchId,
     user_id: data.user_id,
     change_amount: baseQuantity,
     reason: 'purchase' as StockLogReason,
-    notes: data.notes || null,
     created_at: serverTimestamp(),
-  });
+  };
+  
+  // Only add notes if provided
+  if (data.notes !== undefined && data.notes !== null) {
+    logData.notes = data.notes;
+  }
+  
+  batch.set(logRef, logData);
 
   await batch.commit();
 }
 
 export interface UseStockData {
   ingredient_id: string;
+  branchId: string; // Required for data isolation
   quantity: number;
   unit: string;
   user_id: string;
@@ -124,11 +158,15 @@ export interface UseStockData {
 }
 
 export async function useStock(data: UseStockData): Promise<void> {
+  if (!data.branchId) {
+    throw new Error('branchId is required for data isolation');
+  }
+
   // Convert to base units
   const baseQuantity = toBaseUnit(data.quantity, data.unit);
 
-  // Get existing stock
-  const existingStock = await getStockByIngredient(data.ingredient_id);
+  // Get existing stock (filtered by branchId)
+  const existingStock = await getStockByIngredient(data.ingredient_id, data.branchId);
   if (!existingStock) {
     throw new Error('Stock record not found');
   }
@@ -149,29 +187,42 @@ export async function useStock(data: UseStockData): Promise<void> {
 
   // Create stock log (negative amount for usage)
   const logRef = doc(stockLogsRef);
-  batch.set(logRef, {
+  const logData: any = {
     ingredient_id: data.ingredient_id,
+    branch_id: data.branchId,
     user_id: data.user_id,
     change_amount: -baseQuantity,
     reason: data.reason || 'sale',
-    notes: data.notes || null,
     created_at: serverTimestamp(),
-  });
+  };
+  
+  // Only add notes if provided
+  if (data.notes !== undefined && data.notes !== null) {
+    logData.notes = data.notes;
+  }
+  
+  batch.set(logRef, logData);
 
   await batch.commit();
 }
 
 export async function updateStockTransaction(
   ingredientId: string,
+  branchId: string,
   changeAmount: number, // Positive to add, negative to subtract
   userId: string,
   reason: StockLogReason = 'adjustment',
   notes?: string
 ): Promise<void> {
-  // First, find the stock record outside the transaction
+  if (!branchId) {
+    throw new Error('branchId is required for data isolation');
+  }
+
+  // First, find the stock record outside the transaction (filtered by branchId)
   const stockQuery = query(
     ingredientStockRef,
     where('ingredient_id', '==', ingredientId),
+    where('branch_id', '==', branchId),
     limit(1)
   );
   const stockSnapshot = await getDocs(stockQuery);
@@ -190,6 +241,7 @@ export async function updateStockTransaction(
       stockRef = doc(ingredientStockRef);
       transaction.set(stockRef, {
         ingredient_id: ingredientId,
+        branch_id: branchId,
         quantity: 0,
         last_updated: serverTimestamp(),
       });
@@ -212,6 +264,7 @@ export async function updateStockTransaction(
     const logRef = doc(stockLogsRef);
     transaction.set(logRef, {
       ingredient_id: ingredientId,
+      branch_id: branchId,
       user_id: userId,
       change_amount: changeAmount,
       reason,
