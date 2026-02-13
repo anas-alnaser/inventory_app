@@ -3,31 +3,34 @@
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { 
-  AlertTriangle, 
-  CheckCircle2, 
-  TrendingUp, 
-  TrendingDown, 
-  Package, 
+import {
+  AlertTriangle,
+  CheckCircle2,
+  TrendingUp,
+  TrendingDown,
+  Package,
   DollarSign,
   Ghost,
   RefreshCw,
   Sparkles,
   Check,
   X,
-  Clock
+  Clock,
+  Cpu
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "@/lib/hooks/use-toast"
-import { collection, query, where, orderBy, getDocs, doc, updateDoc, Timestamp } from "firebase/firestore"
+import { collection, query, where, orderBy, getDocs, doc, updateDoc, Timestamp, addDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { runAnomalyDetection } from "@/lib/services/ai-functions"
-import { getIngredientById } from "@/lib/services"
+import { getIngredientById, getIngredients, getAllIngredientStock, getAllStockLogs } from "@/lib/services"
 import { cn } from "@/lib/utils"
 import { ENABLE_CLOUD_AI } from "@/lib/config/ai-status"
+import { detectLocalAnomalies, type LocalAnomaly } from "@/lib/ai/local-anomalies"
+import type { Ingredient, IngredientStock, StockLog } from "@/types/entities"
 
 interface Anomaly {
   id: string
@@ -127,13 +130,13 @@ async function fetchAnomalies(): Promise<Anomaly[]> {
     where('resolved', '==', false),
     orderBy('created_at', 'desc')
   )
-  
+
   const snapshot = await getDocs(q)
   const anomalies = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
   })) as Anomaly[]
-  
+
   // Fetch ingredient names
   const enrichedAnomalies = await Promise.all(
     anomalies.map(async (anomaly) => {
@@ -148,7 +151,7 @@ async function fetchAnomalies(): Promise<Anomaly[]> {
       return anomaly
     })
   )
-  
+
   return enrichedAnomalies
 }
 
@@ -174,12 +177,12 @@ function AnomalySkeleton() {
   )
 }
 
-function AnomalyCard({ 
-  anomaly, 
-  onResolve 
-}: { 
+function AnomalyCard({
+  anomaly,
+  onResolve
+}: {
   anomaly: Anomaly
-  onResolve: (id: string) => void 
+  onResolve: (id: string) => void
 }) {
   const config = anomalyTypeConfig[anomaly.type] || anomalyTypeConfig.other
   const severity = severityConfig[anomaly.severity]
@@ -215,7 +218,7 @@ function AnomalyCard({
             <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", config.bgColor)}>
               <Icon className={cn("h-5 w-5", config.color)} />
             </div>
-            
+
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <Badge variant="outline" className={severity.color}>
@@ -228,11 +231,11 @@ function AnomalyCard({
                   </span>
                 )}
               </div>
-              
+
               <p className="text-sm font-medium text-foreground mb-2">
                 {anomaly.description}
               </p>
-              
+
               {anomaly.ai_recommendation && (
                 <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 mt-2">
                   <div className="flex items-center gap-2 mb-1">
@@ -244,12 +247,12 @@ function AnomalyCard({
                   </p>
                 </div>
               )}
-              
+
               <div className="flex items-center justify-between mt-3">
                 <span className="text-xs text-muted-foreground">
                   Detected {formatDate(anomaly.created_at)}
                 </span>
-                
+
                 <div className="flex gap-2">
                   <Button
                     size="sm"
@@ -273,13 +276,13 @@ function AnomalyCard({
 export default function AnomaliesPage() {
   const queryClient = useQueryClient()
   const [isRunning, setIsRunning] = useState(false)
-  
+
   const { data: anomalies = [], isLoading, error } = useQuery({
     queryKey: ['anomalies'],
     queryFn: fetchAnomalies,
     refetchInterval: 30000, // Refresh every 30 seconds
   })
-  
+
   const resolveMutation = useMutation({
     mutationFn: resolveAnomaly,
     onSuccess: () => {
@@ -297,31 +300,69 @@ export default function AnomaliesPage() {
       })
     },
   })
-  
-  const handleRunDetection = async () => {
-    if (!ENABLE_CLOUD_AI) {
-      toast({
-        title: "Cloud AI Required",
-        description: "AI Analysis requires Cloud subscription. Please enable Cloud Functions to use this feature.",
-        variant: "destructive",
-      })
-      return
-    }
 
+  const handleRunDetection = async () => {
     setIsRunning(true)
     try {
-      const result = await runAnomalyDetection()
-      const totalFound = Object.values(result.results).reduce((sum, v) => sum + (v || 0), 0)
-      
-      queryClient.invalidateQueries({ queryKey: ['anomalies'] })
-      
-      toast({
-        title: "Detection Complete",
-        description: totalFound > 0 
-          ? `Found ${totalFound} new anomalies.`
-          : "No new anomalies detected.",
-      })
+      if (ENABLE_CLOUD_AI) {
+        // Cloud AI detection
+        const result = await runAnomalyDetection()
+        const totalFound = Object.values(result.results).reduce((sum, v) => sum + (v || 0), 0)
+
+        queryClient.invalidateQueries({ queryKey: ['anomalies'] })
+
+        toast({
+          title: "Detection Complete",
+          description: totalFound > 0
+            ? `Found ${totalFound} new anomalies.`
+            : "No new anomalies detected.",
+        })
+      } else {
+        // Local detection fallback
+        const [ingredients, ingredientStocks, stockLogs]: [Ingredient[], IngredientStock[], StockLog[]] = await Promise.all([
+          getIngredients(),
+          getAllIngredientStock(),
+          getAllStockLogs()
+        ])
+
+        // Merge stock quantities into ingredients
+        const ingredientsWithStock = ingredients.map((ing: Ingredient) => {
+          const stocks = ingredientStocks.filter((s: IngredientStock) => s.ingredient_id === ing.id)
+          const totalStock = stocks.reduce((sum: number, s: IngredientStock) => sum + s.quantity, 0)
+          return { ...ing, currentStock: totalStock }
+        })
+
+        const localAnomalies = detectLocalAnomalies(ingredientsWithStock, stockLogs, ingredientStocks)
+
+        // Save detected anomalies to Firestore
+        const anomaliesRef = collection(db, 'anomalies')
+        let savedCount = 0
+
+        for (const anomaly of localAnomalies) {
+          await addDoc(anomaliesRef, {
+            type: anomaly.type,
+            ingredient_id: anomaly.ingredient_id,
+            severity: anomaly.severity,
+            description: anomaly.description,
+            details: anomaly.details,
+            ai_recommendation: anomaly.ai_recommendation,
+            created_at: Timestamp.now(),
+            resolved: false,
+          })
+          savedCount++
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['anomalies'] })
+
+        toast({
+          title: "Local Detection Complete",
+          description: savedCount > 0
+            ? `Found ${savedCount} anomalies using local analysis.`
+            : "No anomalies detected. Your inventory looks healthy!",
+        })
+      }
     } catch (error: any) {
+      console.error('Detection error:', error)
       toast({
         title: "Error",
         description: error.message || "Failed to run anomaly detection.",
@@ -339,28 +380,21 @@ export default function AnomaliesPage() {
 
   return (
     <div className="px-4 py-6 md:px-6 lg:px-8 space-y-6">
-      {/* Cloud AI Required Banner */}
+      {/* Cloud AI / Local Analysis Status Badge */}
       {!ENABLE_CLOUD_AI && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-foreground">AI Analysis requires Cloud subscription</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Anomaly detection features require Firebase Cloud Functions to be deployed. 
-                    Please enable Cloud AI in the configuration to use this feature.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="flex items-center gap-2 mb-4">
+            <Badge variant="outline" className="gap-1 bg-emerald-500/10 text-emerald-600 border-emerald-200">
+              <Cpu className="h-3 w-3" />
+              Local Analysis Active
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              Running browser-based detection (no Cloud Functions required)
+            </span>
+          </div>
         </motion.div>
       )}
 
@@ -369,12 +403,12 @@ export default function AnomaliesPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Anomalies</h1>
           <p className="text-muted-foreground">
-            {ENABLE_CLOUD_AI ? "AI-detected issues and unusual patterns" : "Anomaly detection (Cloud AI required)"}
+            {ENABLE_CLOUD_AI ? "AI-detected issues and unusual patterns" : "Local analysis of inventory issues"}
           </p>
         </div>
-        <Button 
-          onClick={handleRunDetection} 
-          disabled={isRunning || !ENABLE_CLOUD_AI}
+        <Button
+          onClick={handleRunDetection}
+          disabled={isRunning}
           className="gap-2"
         >
           <RefreshCw className={cn("h-4 w-4", isRunning && "animate-spin")} />
@@ -409,7 +443,7 @@ export default function AnomaliesPage() {
       )}
 
       {/* All Clear State */}
-      {!isLoading && !error && anomalies.length === 0 && ENABLE_CLOUD_AI && (
+      {!isLoading && !error && anomalies.length === 0 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -436,33 +470,10 @@ export default function AnomaliesPage() {
         </motion.div>
       )}
 
-      {/* Cloud AI Disabled State */}
-      {!ENABLE_CLOUD_AI && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <Card className="border-muted">
-            <CardContent className="py-12">
-              <div className="flex flex-col items-center justify-center text-center space-y-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                  <Sparkles className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-semibold mb-2">Cloud AI Required</h2>
-                  <p className="text-muted-foreground max-w-md">
-                    Anomaly detection requires Firebase Cloud Functions to be deployed and enabled. 
-                    Please configure Cloud AI to use this feature.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
+
 
       {/* Anomalies List */}
-      {!isLoading && !error && anomalies.length > 0 && ENABLE_CLOUD_AI && (
+      {!isLoading && !error && anomalies.length > 0 && (
         <div className="space-y-6">
           {/* Summary */}
           <div className="grid gap-4 md:grid-cols-4">

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useMutation } from "@tanstack/react-query"
 import {
     FileText,
@@ -62,6 +62,7 @@ export function EODReportDialog({
 }: EODReportDialogProps) {
     const { toast } = useToast()
     const [report, setReport] = useState<EODReport | null>(null)
+    const [isGenerating, setIsGenerating] = useState(false)
 
     const generateMutation = useMutation({
         mutationFn: async () => {
@@ -73,6 +74,7 @@ export function EODReportDialog({
             })
         },
         onSuccess: (result) => {
+            setIsGenerating(false)
             if (result.success && result.report) {
                 setReport(result.report)
                 toast({
@@ -87,7 +89,18 @@ export function EODReportDialog({
                 })
             }
         },
+        onError: () => {
+            setIsGenerating(false)
+        },
     })
+
+    // Auto-generate report when dialog opens
+    useEffect(() => {
+        if (open && !report && !isGenerating && !generateMutation.isPending) {
+            setIsGenerating(true)
+            generateMutation.mutate()
+        }
+    }, [open])
 
     const handlePrint = () => {
         if (!report) return
@@ -134,21 +147,35 @@ export function EODReportDialog({
 
                 {!report ? (
                     <div className="py-12 text-center space-y-4">
-                        <Calendar className="h-16 w-16 text-muted-foreground/50 mx-auto" />
-                        <div>
-                            <p className="text-lg font-medium">Generate Today's Report</p>
-                            <p className="text-sm text-muted-foreground">
-                                {format(new Date(), "EEEE, MMMM d, yyyy")}
-                            </p>
-                        </div>
-                        <Button
-                            size="lg"
-                            onClick={() => generateMutation.mutate()}
-                            disabled={generateMutation.isPending}
-                            className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white"
-                        >
-                            {generateMutation.isPending ? "Generating..." : "Generate Report"}
-                        </Button>
+                        {generateMutation.isPending || isGenerating ? (
+                            <>
+                                <div className="w-16 h-16 mx-auto rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+                                <div>
+                                    <p className="text-lg font-medium">Generating Report...</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        {format(new Date(), "EEEE, MMMM d, yyyy")}
+                                    </p>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <Calendar className="h-16 w-16 text-muted-foreground/50 mx-auto" />
+                                <div>
+                                    <p className="text-lg font-medium">Generate Today's Report</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        {format(new Date(), "EEEE, MMMM d, yyyy")}
+                                    </p>
+                                </div>
+                                <Button
+                                    size="lg"
+                                    onClick={() => generateMutation.mutate()}
+                                    disabled={generateMutation.isPending}
+                                    className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white"
+                                >
+                                    Generate Report
+                                </Button>
+                            </>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-6 py-4">

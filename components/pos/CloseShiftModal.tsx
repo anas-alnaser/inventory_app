@@ -11,10 +11,9 @@ import {
     CheckCircle2,
     TrendingUp,
     TrendingDown,
-    Minus
 } from "lucide-react"
 import { motion } from "framer-motion"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useRouter } from "next/navigation"
 import {
     Dialog,
     DialogContent,
@@ -28,8 +27,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
-import { closeShift, getShiftSalesSummary } from "@/lib/services/shift"
+import { closeShift, calculateShiftTotals, type ShiftTotals } from "@/lib/services/shifts"
+import { updateAttendanceClockOut } from "@/lib/services/attendance"
 import { formatCurrency } from "@/lib/services/tax"
+import { useStaff } from "@/lib/contexts/StaffContext"
 import { cn } from "@/lib/utils"
 import type { Shift } from "@/types/entities"
 
@@ -38,33 +39,53 @@ interface CloseShiftModalProps {
     onOpenChange: (open: boolean) => void
     shift: Shift
     staffName: string
-    onShiftClosed: () => void
+    attendanceId?: string | null
+    onShiftClosed?: () => void
 }
 
+/**
+ * CloseShiftModal for POS
+ * 
+ * Shows shift summary and asks for counted cash.
+ * Uses userId-based closeShift which atomically:
+ * 1. Calculates expected cash
+ * 2. Updates shift with variance
+ * 3. Sets user's active_shift_id to null
+ */
 export function CloseShiftModal({
     open,
     onOpenChange,
     shift,
     staffName,
+    attendanceId,
     onShiftClosed,
 }: CloseShiftModalProps) {
+    const router = useRouter()
+    const { activeStaff, clearActiveStaff } = useStaff()
     const [actualCash, setActualCash] = useState<string>("")
     const [error, setError] = useState<string | null>(null)
+    const [isClosing, setIsClosing] = useState(false)
+    const [shiftTotals, setShiftTotals] = useState<ShiftTotals | null>(null)
 
-    // Fetch shift sales summary
-    const { data: salesSummary, isLoading: summaryLoading } = useQuery({
-        queryKey: ["shift-summary", shift.id],
-        queryFn: () => getShiftSalesSummary(shift.id),
-        enabled: open && !!shift.id,
-    })
+    // Fetch shift totals using the new calculator engine
+    useEffect(() => {
+        if (open && shift?.id) {
+            calculateShiftTotals(shift.id).then((result) => {
+                if (result.success && result.totals) {
+                    setShiftTotals(result.totals)
+                }
+            })
+        }
+    }, [open, shift?.id])
 
-    // Calculate expected cash (starting cash + cash sales)
-    const expectedCash = (shift.startingCash || 0) + (salesSummary?.cashSales || 0)
+    // Use calculated expected cash from the calculator engine
+    const expectedCash = shiftTotals?.expectedCash || (shift?.startingCash || 0)
     const actualCashNumber = parseFloat(actualCash) || 0
     const variance = actualCashNumber - expectedCash
 
     // Calculate shift duration
     const shiftDuration = () => {
+        if (!shift?.startTime) return "0h 0m"
         const start = new Date(shift.startTime)
         const now = new Date()
         const diff = now.getTime() - start.getTime()
@@ -73,33 +94,57 @@ export function CloseShiftModal({
         return `${hours}h ${minutes}m`
     }
 
-    const closeShiftMutation = useMutation({
-        mutationFn: async () => {
-            return closeShift({
-                shiftId: shift.id,
-                actualCash: actualCashNumber,
-            })
-        },
-        onSuccess: (result) => {
-            if (result.success) {
-                onShiftClosed()
-                onOpenChange(false)
-            } else {
-                setError(result.error || "Failed to close shift")
-            }
-        },
-        onError: (err: any) => {
-            setError(err.message || "Failed to close shift")
-        },
-    })
+    const handleCloseShift = async () => {
+        if (!activeStaff) {
+            setError("No active staff member")
+            return
+        }
 
-    const handleCloseShift = () => {
         if (!actualCash || actualCashNumber < 0) {
             setError("Please enter a valid cash amount")
             return
         }
+
+        console.log('[CloseShiftModal] Starting shift close:', {
+            userId: activeStaff.id,
+            actualCash: actualCashNumber,
+            shiftId: shift?.id,
+        });
+
         setError(null)
-        closeShiftMutation.mutate()
+        setIsClosing(true)
+
+        try {
+            // Use userId-based closeShift (atomically handles everything)
+            console.log('[CloseShiftModal] Calling closeShift service...');
+            const result = await closeShift(activeStaff.id, actualCashNumber)
+
+            if (!result.success) {
+                console.error('[CloseShiftModal] Close shift failed:', result.error);
+                setError(result.error || "Failed to close shift")
+                setIsClosing(false)
+                return
+            }
+
+            console.log('[CloseShiftModal] Shift closed successfully:', result.shift);
+
+            // Update attendance if available
+            if (attendanceId) {
+                await updateAttendanceClockOut(attendanceId)
+            }
+
+            // Callback
+            onShiftClosed?.()
+            onOpenChange(false)
+
+            // Clear staff and redirect to lock screen
+            clearActiveStaff()
+            router.replace("/lock-screen")
+        } catch (err: any) {
+            console.error('[CloseShiftModal] Exception during shift close:', err);
+            setError(err.message || "Failed to close shift")
+            setIsClosing(false)
+        }
     }
 
     // Variance status
@@ -136,7 +181,7 @@ export function CloseShiftModal({
                         <div className="flex items-center justify-between">
                             <span className="text-sm text-muted-foreground">Start Time</span>
                             <span className="font-medium">
-                                {new Date(shift.startTime).toLocaleTimeString("en-US", {
+                                {shift?.startTime && new Date(shift.startTime).toLocaleTimeString("en-US", {
                                     hour: "2-digit",
                                     minute: "2-digit",
                                     hour12: true,
@@ -145,7 +190,7 @@ export function CloseShiftModal({
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-sm text-muted-foreground">Transactions</span>
-                            <span className="font-semibold">{salesSummary?.transactionCount || 0}</span>
+                            <span className="font-semibold">{shiftTotals?.transactionCount || 0}</span>
                         </div>
                     </div>
 
@@ -157,28 +202,28 @@ export function CloseShiftModal({
                                 <Banknote className="h-5 w-5 mx-auto mb-1 text-emerald-500" />
                                 <p className="text-xs text-muted-foreground">Cash</p>
                                 <p className="font-bold text-foreground">
-                                    {formatCurrency(salesSummary?.cashSales || 0)}
+                                    {formatCurrency(shiftTotals?.cashSales || 0)}
                                 </p>
                             </div>
                             <div className="bg-muted/50 rounded-xl p-3 text-center">
                                 <CreditCard className="h-5 w-5 mx-auto mb-1 text-blue-500" />
                                 <p className="text-xs text-muted-foreground">Card</p>
                                 <p className="font-bold text-foreground">
-                                    {formatCurrency(salesSummary?.cardSales || 0)}
+                                    {formatCurrency(shiftTotals?.cardSales || 0)}
                                 </p>
                             </div>
                             <div className="bg-muted/50 rounded-xl p-3 text-center">
                                 <QrCode className="h-5 w-5 mx-auto mb-1 text-purple-500" />
                                 <p className="text-xs text-muted-foreground">CliQ</p>
                                 <p className="font-bold text-foreground">
-                                    {formatCurrency(salesSummary?.cliqSales || 0)}
+                                    {formatCurrency(shiftTotals?.cliqSales || 0)}
                                 </p>
                             </div>
                         </div>
                         <div className="bg-gradient-to-r from-cyan-500/10 to-teal-500/10 rounded-xl p-4 text-center border border-cyan-500/20">
                             <p className="text-sm text-muted-foreground">Total Sales</p>
                             <p className="text-2xl font-bold bg-gradient-to-r from-cyan-500 to-teal-500 bg-clip-text text-transparent">
-                                {formatCurrency(salesSummary?.totalSales || 0)} JOD
+                                {formatCurrency(shiftTotals?.totalSales || 0)} JOD
                             </p>
                         </div>
                     </div>
@@ -196,12 +241,24 @@ export function CloseShiftModal({
                         <div className="bg-muted/50 rounded-xl p-4 space-y-2">
                             <div className="flex items-center justify-between text-sm">
                                 <span className="text-muted-foreground">Starting Cash</span>
-                                <span>{formatCurrency(shift.startingCash)} JOD</span>
+                                <span>{formatCurrency(shift?.startingCash || 0)} JOD</span>
                             </div>
                             <div className="flex items-center justify-between text-sm">
                                 <span className="text-muted-foreground">+ Cash Sales</span>
-                                <span>{formatCurrency(salesSummary?.cashSales || 0)} JOD</span>
+                                <span>{formatCurrency(shiftTotals?.cashSales || 0)} JOD</span>
                             </div>
+                            {(shiftTotals?.payIns || 0) > 0 && (
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">+ Pay-Ins</span>
+                                    <span className="text-emerald-500">+{formatCurrency(shiftTotals?.payIns || 0)} JOD</span>
+                                </div>
+                            )}
+                            {(shiftTotals?.payOuts || 0) > 0 && (
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">- Pay-Outs</span>
+                                    <span className="text-red-500">-{formatCurrency(shiftTotals?.payOuts || 0)} JOD</span>
+                                </div>
+                            )}
                             <Separator />
                             <div className="flex items-center justify-between font-semibold">
                                 <span>Expected Cash</span>
@@ -211,7 +268,7 @@ export function CloseShiftModal({
 
                         {/* Actual Cash Input */}
                         <div className="space-y-2">
-                            <Label htmlFor="actualCash">Actual Cash in Drawer</Label>
+                            <Label htmlFor="actualCash">Counted Cash in Drawer</Label>
                             <div className="relative">
                                 <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
@@ -223,6 +280,8 @@ export function CloseShiftModal({
                                     onChange={(e) => setActualCash(e.target.value)}
                                     className="pl-10 text-lg h-12 font-semibold"
                                     placeholder="Count your cash..."
+                                    disabled={isClosing}
+                                    autoFocus
                                 />
                             </div>
                         </div>
@@ -265,15 +324,16 @@ export function CloseShiftModal({
                         variant="outline"
                         onClick={() => onOpenChange(false)}
                         className="w-full sm:w-auto"
+                        disabled={isClosing}
                     >
                         Cancel
                     </Button>
                     <Button
                         onClick={handleCloseShift}
-                        disabled={closeShiftMutation.isPending || !actualCash}
+                        disabled={isClosing || !actualCash}
                         className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
                     >
-                        {closeShiftMutation.isPending ? (
+                        {isClosing ? (
                             <div className="flex items-center gap-2">
                                 <motion.div
                                     animate={{ rotate: 360 }}

@@ -152,26 +152,56 @@ export async function generateEODReport(params: {
             ...data,
         }))
 
-        // Fetch shifts for the day
+        // Fetch shifts for the day (query all and filter by date due to branchId possibly missing on old shifts)
         const shiftsRef = collection(db, "shifts")
-        const shiftsQuery = query(
-            shiftsRef,
-            where("branchId", "==", branchId)
-        )
-        const shiftsSnapshot = await getDocs(shiftsQuery)
-        const shifts = shiftsSnapshot.docs.map((doc) => {
-            const data = doc.data()
-            return {
-                id: doc.id,
-                status: data.status as string | undefined,
-                variance: data.variance as number | undefined,
-                startTime: data.startTime?.toDate?.() || new Date(data.startTime),
-                endTime: data.endTime?.toDate?.() || (data.endTime ? new Date(data.endTime) : null),
+        // Try to query by branchId first, fallback to getting all and filtering
+        let shifts: { id: string; status?: string; variance?: number; startTime: Date; endTime: Date | null }[] = []
+
+        try {
+            // First try with branchId
+            const shiftsQuery = query(
+                shiftsRef,
+                where("branchId", "==", branchId)
+            )
+            const shiftsSnapshot = await getDocs(shiftsQuery)
+
+            if (!shiftsSnapshot.empty) {
+                shifts = shiftsSnapshot.docs.map((doc) => {
+                    const data = doc.data()
+                    return {
+                        id: doc.id,
+                        status: data.status as string | undefined,
+                        variance: data.variance as number | undefined,
+                        startTime: data.startTime?.toDate?.() || new Date(data.startTime),
+                        endTime: data.endTime?.toDate?.() || (data.endTime ? new Date(data.endTime) : null),
+                    }
+                }).filter((shift) => {
+                    const shiftDate = new Date(shift.startTime)
+                    return shiftDate >= dayStart && shiftDate <= dayEnd
+                })
+            } else {
+                // Fallback: get all shifts and filter by date (for old shifts without branchId)
+                console.log('[EOD] No shifts found with branchId, falling back to date-based filter')
+                const allShiftsQuery = query(shiftsRef)
+                const allShiftsSnapshot = await getDocs(allShiftsQuery)
+
+                shifts = allShiftsSnapshot.docs.map((doc) => {
+                    const data = doc.data()
+                    return {
+                        id: doc.id,
+                        status: data.status as string | undefined,
+                        variance: data.variance as number | undefined,
+                        startTime: data.startTime?.toDate?.() || new Date(data.startTime),
+                        endTime: data.endTime?.toDate?.() || (data.endTime ? new Date(data.endTime) : null),
+                    }
+                }).filter((shift) => {
+                    const shiftDate = new Date(shift.startTime)
+                    return shiftDate >= dayStart && shiftDate <= dayEnd
+                })
             }
-        }).filter((shift) => {
-            const shiftDate = new Date(shift.startTime)
-            return shiftDate >= dayStart && shiftDate <= dayEnd
-        })
+        } catch (error) {
+            console.error('[EOD] Error fetching shifts:', error)
+        }
 
         const shiftsOpened = shifts.length
         const shiftsClosed = shifts.filter((s) => s.status === "closed").length

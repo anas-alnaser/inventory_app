@@ -173,9 +173,9 @@ export function POSSidebar({
   ]
 
   return (
-    <aside className="w-20 lg:w-64 h-full bg-sidebar border-r border-sidebar-border flex flex-col flex-shrink-0 transition-all duration-300">
+    <aside className="w-20 lg:w-64 h-full bg-[#1e293b] border-r border-slate-700 flex flex-col flex-shrink-0 transition-all duration-300">
       {/* Logo */}
-      <div className="h-16 flex items-center justify-center lg:justify-start px-4 border-b border-sidebar-border">
+      <div className="h-16 flex items-center justify-center lg:justify-start px-4 border-b border-slate-700">
         <Link href="/pos" className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
             <Coffee className="h-5 w-5 text-white" />
@@ -206,11 +206,11 @@ export function POSSidebar({
               whileTap={{ scale: 0.98 }}
               onClick={handleClick}
               className={cn(
-                "w-full flex items-center justify-center lg:justify-start gap-3 px-3 py-3 rounded-xl transition-all",
+                "w-full flex items-center justify-center lg:justify-start gap-3 px-3 py-3 rounded-lg transition-all relative",
                 isActive
-                  ? "bg-gradient-to-r from-cyan-500/20 to-teal-500/20 text-cyan-500 border border-cyan-500/20"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                "focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  ? "bg-cyan-500/10 text-cyan-400 border-r-4 border-cyan-500"
+                  : "text-slate-400 hover:text-cyan-400 hover:bg-slate-800",
+                "focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
               )}
             >
               {action.icon}
@@ -222,7 +222,7 @@ export function POSSidebar({
 
       {/* Shift Status */}
       {activeShift && (
-        <div className="px-2 lg:px-4 py-3 border-t border-sidebar-border">
+        <div className="px-2 lg:px-4 py-3 border-t border-slate-700">
           <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 rounded-xl p-3 border border-emerald-500/20">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -252,7 +252,7 @@ export function POSSidebar({
       )}
 
       {/* Bottom Actions */}
-      <div className="px-2 lg:px-4 py-4 space-y-2 border-t border-sidebar-border">
+      <div className="px-2 lg:px-4 py-4 space-y-2 border-t border-slate-700">
         {/* Theme Toggle */}
         <Button
           variant="ghost"

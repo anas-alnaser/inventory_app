@@ -26,20 +26,20 @@ export async function createAttendanceRecord(
   try {
     const now = Timestamp.now();
     const attendanceRef = doc(attendanceCollection);
-    
+
     const attendanceData: Omit<Attendance, 'id'> = {
       staffId,
-      clockIn: now,
+      clockIn: now.toDate(),
       clockOut: null,
       totalHours: null,
       shift_id: shiftId || null,
-      created_at: now,
+      created_at: now.toDate(),
     };
 
     await setDoc(attendanceRef, {
       ...attendanceData,
       created_at: serverTimestamp(),
-    });
+    } as any);
 
     const attendance: Attendance = {
       id: attendanceRef.id,
@@ -183,7 +183,7 @@ export async function getActiveAttendance(
     const doc = querySnapshot.docs[0];
     const attendance: Attendance = {
       id: doc.id,
-      ...doc.data(),
+      ...(doc.data() as any),
     } as Attendance;
 
     return {

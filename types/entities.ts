@@ -1,6 +1,6 @@
 // TypeScript types based on ERD schema
 
-export type UserRole = 'owner' | 'manager' | 'stock_manager' | 'supervisor' | 'cashier';
+export type UserRole = 'owner' | 'admin' | 'manager' | 'stock_manager' | 'supervisor' | 'cashier';
 export type PurchaseOrderStatus = 'draft' | 'ordered' | 'received' | 'cancelled';
 export type PaymentMethod = 'Cash' | 'Visa' | 'CliQ';
 export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
@@ -10,6 +10,8 @@ export type WasteRiskLevel = 'low' | 'medium' | 'high' | 'critical';
 export type AnomalyType = 'stock_shortage' | 'excessive_waste' | 'price_anomaly' | 'sales_anomaly' | 'other';
 export type AnomalySeverity = 'low' | 'medium' | 'high' | 'critical';
 export type ShiftStatus = 'open' | 'closed';
+export type KitchenStatus = 'pending' | 'preparing' | 'ready' | 'served';
+export type OrderType = 'dine-in' | 'takeaway';
 
 // Core Entities
 export interface Branch {
@@ -120,6 +122,7 @@ export interface StockLog {
   user_id: string;
   change_amount: number;
   reason: StockLogReason;
+  notes?: string;
   created_at: Date | string;
 }
 
@@ -188,6 +191,7 @@ export interface Invoice {
   invoiceNumber: string; // Format: "INV-2025-0001"
   branch_id: string;
   cashier_id: string;
+  shiftId?: string; // Associated shift ID for accurate shift correlation
   items: InvoiceItem[];
   subtotal: number;
   discountAmount?: number;
@@ -205,6 +209,8 @@ export interface Invoice {
   refundId?: string;
   refundedAt?: Date | string;
   refundedBy?: string;
+  kitchenStatus?: KitchenStatus; // 'pending' | 'preparing' | 'ready' | 'served'
+  orderType?: OrderType; // 'dine-in' | 'takeaway'
   created_at: Date | string;
 }
 
@@ -269,12 +275,14 @@ export interface SystemLog {
 export interface Shift {
   id: string;
   staffId: string;
+  branchId?: string; // Branch ID for data isolation
   startTime: Date | string;
   endTime: Date | string | null;
   startingCash: number; // JOD
   expectedCash: number; // System-calculated: startingCash + sum of cash invoices
   actualCash: number | null; // User-entered actual cash count
   variance: number | null; // Difference: expectedCash - actualCash
+  totalSales?: number; // Total sales (all payment methods) during shift
   status: ShiftStatus; // 'open' | 'closed'
   created_at: Date | string;
 }

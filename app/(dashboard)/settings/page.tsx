@@ -3,10 +3,11 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { User, Palette, DollarSign, Database, AlertTriangle, Trash2 } from "lucide-react"
+import { User, Palette, DollarSign, Database, AlertTriangle, Trash2, Coffee, Download } from "lucide-react"
 import { useTheme } from "next-themes"
 import { doc, setDoc } from "firebase/firestore"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -104,7 +105,7 @@ export default function SettingsPage() {
   const savePreferencesMutation = useMutation({
     mutationFn: async () => {
       if (!userData?.id) throw new Error("User not authenticated")
-      
+
       const userDocRef = doc(db, "users", userData.id)
       await setDoc(
         userDocRef,
@@ -118,12 +119,12 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user-settings", userData?.id] })
       queryClient.invalidateQueries({ queryKey: ["user", userData?.id] })
-      
+
       // Update theme in the theme provider
       if (setTheme) {
         setTheme(themeState)
       }
-      
+
       toast({
         title: "Preferences Saved",
         description: "Your preferences have been saved successfully.",
@@ -271,7 +272,7 @@ export default function SettingsPage() {
 
               <Separator />
 
-              <Button 
+              <Button
                 onClick={handleSavePreferences}
                 disabled={savePreferencesMutation.isPending}
               >
@@ -283,7 +284,35 @@ export default function SettingsPage() {
 
         {/* Database Tab - Only for Admin/Owner */}
         {(userData?.role === 'admin' || userData?.role === 'owner') && (
-          <TabsContent value="database">
+          <TabsContent value="database" className="space-y-6">
+            {/* Seed Data Card */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <Coffee className="h-5 w-5 text-amber-500" />
+                  <div>
+                    <CardTitle>Seed Data</CardTitle>
+                    <CardDescription>
+                      Load sample data to get started quickly
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Import pre-configured ingredients, menu items, and recipes from your uploaded seed files.
+                  This is useful for new installations or testing.
+                </p>
+                <Link href="/seed-coffee">
+                  <Button className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600">
+                    <Download className="h-4 w-4 mr-2" />
+                    Load Coffee Shop Data
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            {/* Danger Zone Card */}
             <Card className="border-destructive">
               <CardHeader>
                 <div className="flex items-center gap-3">
@@ -349,13 +378,13 @@ function DeleteDatabaseButton() {
       if (result.success) {
         // Invalidate all queries to refresh the UI
         queryClient.clear()
-        
+
         toast({
           title: "Database Deleted",
           description: `Successfully deleted all data. Deleted ${Object.values(result.deletedCounts).reduce((a, b) => a + b, 0)} documents total.`,
           variant: "default",
         })
-        
+
         setIsOpen(false)
         setConfirmText("")
       } else {

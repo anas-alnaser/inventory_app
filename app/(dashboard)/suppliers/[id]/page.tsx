@@ -50,6 +50,7 @@ import {
   type Supplier,
 } from "@/lib/services"
 import { formatCurrency } from "@/lib/utils"
+import { useAuth } from "@/lib/hooks/useAuth"
 
 function KPICard({
   title,
@@ -129,8 +130,10 @@ function PageSkeleton() {
 export default function SupplierDetailsPage() {
   const params = useParams()
   const router = useRouter()
+  const { userData } = useAuth()
   const supplierId = params.id as string
-  
+  const branchId = userData?.branchId || ""
+
   const [supplier, setSupplier] = useState<Supplier | null>(null)
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
@@ -141,11 +144,11 @@ export default function SupplierDetailsPage() {
 
     async function fetchData() {
       if (!supplierId) return;
-      
+
       try {
         setIsLoading(true);
         console.log('Fetching for ID:', supplierId);
-        
+
         // 1. Fetch Data
         const data = await getSupplierById(supplierId);
         console.log('Data received:', data);
@@ -154,11 +157,11 @@ export default function SupplierDetailsPage() {
         if (isMounted) {
           if (data) {
             setSupplier(data);
-            
+
             // Fetch other data (orders/ingredients) here
             const [fetchedIngredients, fetchedOrders] = await Promise.all([
               getIngredientsBySupplier(supplierId),
-              getOrdersBySupplier(supplierId)
+              getOrdersBySupplier(supplierId, branchId)
             ]);
 
             console.log('Ingredients Found:', fetchedIngredients.length);
@@ -209,7 +212,7 @@ export default function SupplierDetailsPage() {
   }
 
   // --- KPI Calculations ---
-  
+
   // Total Spend (Sum of received orders)
   const totalSpend = orders
     .filter((o) => o.status === "received")
@@ -219,7 +222,7 @@ export default function SupplierDetailsPage() {
   const itemsSuppliedCount = ingredients.length
 
   // Active Orders (draft or ordered)
-  const activeOrdersCount = orders.filter((o) => 
+  const activeOrdersCount = orders.filter((o) =>
     o.status === "ordered" || o.status === "draft"
   ).length
 
@@ -230,21 +233,21 @@ export default function SupplierDetailsPage() {
       // Handle Firestore Timestamp or Date object
       let date: Date | undefined;
       const createdAt = order.created_at as any;
-      
+
       if (createdAt && typeof createdAt.toDate === 'function') {
-         date = createdAt.toDate();
+        date = createdAt.toDate();
       } else if (createdAt && createdAt.seconds) {
-         date = new Date(createdAt.seconds * 1000);
+        date = new Date(createdAt.seconds * 1000);
       } else if (order.created_at instanceof Date) {
-         date = order.created_at;
+        date = order.created_at;
       } else {
-         date = new Date(); // Fallback
+        date = new Date(); // Fallback
       }
 
       if (!date) return acc;
 
       const monthKey = format(date, "MMM yyyy")
-      
+
       if (!acc[monthKey]) {
         acc[monthKey] = 0
       }
@@ -278,7 +281,7 @@ export default function SupplierDetailsPage() {
   return (
     <div className="min-h-screen bg-background pb-12">
       <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
-        
+
         {/* Header Section */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
@@ -341,10 +344,10 @@ export default function SupplierDetailsPage() {
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
+
           {/* Left Column (2/3) */}
           <div className="lg:col-span-2 space-y-8">
-            
+
             {/* Monthly Spending Chart */}
             <Card>
               <CardHeader>
@@ -451,7 +454,7 @@ export default function SupplierDetailsPage() {
 
           {/* Right Column (1/3) */}
           <div className="space-y-6">
-            
+
             {/* Contact Card */}
             <Card>
               <CardHeader>
@@ -467,7 +470,7 @@ export default function SupplierDetailsPage() {
                     <p className="text-sm text-muted-foreground truncate">{supplier.phone}</p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-3">
                   <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                     <Mail className="h-4 w-4" />
@@ -497,7 +500,7 @@ export default function SupplierDetailsPage() {
                   <div>
                     <p className="text-sm font-medium">Delivery Days</p>
                     <p className="text-sm text-muted-foreground">
-                       {Array.isArray(supplier.delivery_days) && supplier.delivery_days.length > 0
+                      {Array.isArray(supplier.delivery_days) && supplier.delivery_days.length > 0
                         ? supplier.delivery_days.join(", ")
                         : "Not specified"}
                     </p>
@@ -543,17 +546,17 @@ export default function SupplierDetailsPage() {
                           {(() => {
                             let dateStr = "Unknown date";
                             if (order.created_at) {
-                                let date;
-                                if (typeof (order.created_at as any).toDate === 'function') {
-                                    date = (order.created_at as any).toDate();
-                                } else if ((order.created_at as any).seconds) {
-                                    date = new Date((order.created_at as any).seconds * 1000);
-                                } else if (order.created_at instanceof Date) {
-                                    date = order.created_at;
-                                }
-                                if (date) {
-                                    dateStr = format(date, "MMM d, yyyy");
-                                }
+                              let date;
+                              if (typeof (order.created_at as any).toDate === 'function') {
+                                date = (order.created_at as any).toDate();
+                              } else if ((order.created_at as any).seconds) {
+                                date = new Date((order.created_at as any).seconds * 1000);
+                              } else if (order.created_at instanceof Date) {
+                                date = order.created_at;
+                              }
+                              if (date) {
+                                dateStr = format(date, "MMM d, yyyy");
+                              }
                             }
                             return dateStr;
                           })()}
@@ -562,8 +565,8 @@ export default function SupplierDetailsPage() {
                       <div className="text-right">
                         <p className="font-medium text-sm">{formatCurrency(order.total_cost)}</p>
                         <Badge variant={
-                          order.status === 'received' ? 'default' : 
-                          order.status === 'cancelled' ? 'destructive' : 'secondary'
+                          order.status === 'received' ? 'default' :
+                            order.status === 'cancelled' ? 'destructive' : 'secondary'
                         } className="text-[10px] h-5">
                           {order.status}
                         </Badge>
@@ -575,7 +578,7 @@ export default function SupplierDetailsPage() {
                   )}
                 </div>
                 {orders.length > 0 && (
-                   <Button variant="link" className="w-full mt-2" size="sm">
+                  <Button variant="link" className="w-full mt-2" size="sm">
                     View All Orders
                   </Button>
                 )}

@@ -19,19 +19,19 @@ import { toast } from "@/lib/hooks/use-toast"
 import { closeShift } from "@/lib/services/shifts"
 import { updateAttendanceClockOut } from "@/lib/services/attendance"
 import { useStaff } from "@/lib/contexts/StaffContext"
-import { Loader2 } from "lucide-react"
+import { Loader2, AlertTriangle } from "lucide-react"
 
 const closeShiftSchema = z.object({
-  actualCash: z
+  countedCash: z
     .string()
-    .min(1, "Actual cash is required")
+    .min(1, "Counted cash is required")
     .refine(
       (val) => {
         const num = parseFloat(val)
         return !isNaN(num) && num >= 0
       },
       {
-        message: "Actual cash must be a valid positive number",
+        message: "Please enter a valid positive number",
       }
     ),
 })
@@ -41,18 +41,27 @@ type CloseShiftForm = z.infer<typeof closeShiftSchema>
 interface CloseShiftModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  shiftId: string
-  attendanceId: string | null
+  attendanceId?: string | null
 }
 
+/**
+ * CloseShiftModal - Simple modal that asks ONLY for counted cash
+ * 
+ * Flow:
+ * 1. Enter counted cash amount
+ * 2. Calls closeShift(userId, actualCash) which:
+ *    - Calculates expected cash from invoices
+ *    - Updates shift with variance
+ *    - Sets user's active_shift_id to null
+ * 3. Clears staff context and redirects to lock-screen
+ */
 export function CloseShiftModal({
   open,
   onOpenChange,
-  shiftId,
   attendanceId,
 }: CloseShiftModalProps) {
   const router = useRouter()
-  const { clearActiveStaff } = useStaff()
+  const { activeStaff, clearActiveStaff } = useStaff()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const {
@@ -65,52 +74,70 @@ export function CloseShiftModal({
   })
 
   const onSubmit = async (data: CloseShiftForm) => {
+    if (!activeStaff) {
+      toast({
+        title: "Error",
+        description: "No active staff member",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsSubmitting(true)
     try {
-      const actualCash = parseFloat(data.actualCash)
+      const countedCash = parseFloat(data.countedCash)
 
-      // Close the shift (this calculates expectedCash and variance internally)
-      const shiftResult = await closeShift(shiftId, actualCash)
+      // Close shift using userId (service reads active_shift_id internally)
+      const result = await closeShift(activeStaff.id, countedCash)
 
-      if (!shiftResult.success || !shiftResult.shift) {
+      if (!result.success || !result.shift) {
         toast({
           title: "Error",
-          description: shiftResult.error || "Failed to close shift",
+          description: result.error || "Failed to close shift",
           variant: "destructive",
         })
         setIsSubmitting(false)
         return
       }
 
-      // Update attendance with clock out
+      // Update attendance with clock out (if applicable)
       if (attendanceId) {
         const attendanceResult = await updateAttendanceClockOut(attendanceId)
         if (!attendanceResult.success) {
-          console.error("Failed to update attendance:", attendanceResult.error)
-          // Continue anyway - shift is already closed
+          console.error("[CloseShift] Failed to update attendance:", attendanceResult.error)
         }
       }
 
-      // Show variance in toast (only after shift is closed)
-      const variance = shiftResult.shift.variance || 0
-      const varianceMessage =
-        variance === 0
-          ? "Cash count matches expected amount."
-          : variance > 0
-          ? `Shortage: ${variance.toFixed(2)} JOD`
-          : `Overage: ${Math.abs(variance).toFixed(2)} JOD`
+      // Show variance feedback
+      const variance = result.shift.variance || 0
+      const expectedCash = result.shift.expectedCash || 0
+
+      let varianceMessage = ""
+      let toastVariant: "default" | "destructive" = "default"
+
+      if (variance === 0) {
+        varianceMessage = `✓ Perfect! Cash matches expected (${expectedCash.toFixed(2)} JOD)`
+      } else if (variance > 0) {
+        varianceMessage = `Shortage: ${variance.toFixed(2)} JOD (Expected: ${expectedCash.toFixed(2)} JOD)`
+        toastVariant = "destructive"
+      } else {
+        varianceMessage = `Overage: ${Math.abs(variance).toFixed(2)} JOD (Expected: ${expectedCash.toFixed(2)} JOD)`
+        toastVariant = "destructive"
+      }
 
       toast({
         title: "Shift Closed",
-        description: `Shift closed successfully. ${varianceMessage}`,
-        variant: variance === 0 ? "default" : "destructive",
+        description: varianceMessage,
+        variant: toastVariant,
       })
 
-      // Clear active staff and redirect to lock screen
-      clearActiveStaff()
+      // Clean up and redirect
       reset()
       onOpenChange(false)
-      router.push("/lock-screen")
+
+      // Clear staff context and force re-login
+      clearActiveStaff()
+      router.replace("/lock-screen")
     } catch (error: any) {
       toast({
         title: "Error",
@@ -123,40 +150,50 @@ export function CloseShiftModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
-          <DialogTitle>Close Shift</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            Close Shift
+          </DialogTitle>
           <DialogDescription>
-            Enter the total cash amount currently in the drawer. Do not include
-            any other information.
+            Count the total cash in your drawer and enter it below.
           </DialogDescription>
         </DialogHeader>
+
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Warning Message */}
+          {/* Warning */}
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
             <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-              ⚠️ Please count the drawer carefully. This action cannot be undone.
+              ⚠️ Count carefully. This action cannot be undone.
             </p>
           </div>
+
+          {/* Cash Input */}
           <div className="space-y-2">
-            <Label htmlFor="actualCash">Enter Total Cash in Drawer (JOD)</Label>
+            <Label htmlFor="countedCash" className="text-base font-semibold">
+              Total Cash in Drawer (JOD)
+            </Label>
             <Input
-              id="actualCash"
+              id="countedCash"
               type="number"
               step="0.01"
               min="0"
               placeholder="0.00"
-              {...register("actualCash")}
+              className="text-lg h-12"
+              {...register("countedCash")}
               disabled={isSubmitting}
               autoFocus
             />
-            {errors.actualCash && (
+            {errors.countedCash && (
               <p className="text-sm text-destructive">
-                {errors.actualCash.message}
+                {errors.countedCash.message}
               </p>
             )}
           </div>
-          <div className="flex justify-end gap-2">
+
+          {/* Buttons */}
+          <div className="flex justify-end gap-2 pt-2">
             <Button
               type="button"
               variant="outline"
@@ -168,7 +205,11 @@ export function CloseShiftModal({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting} variant="destructive">
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              variant="destructive"
+            >
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -184,4 +225,3 @@ export function CloseShiftModal({
     </Dialog>
   )
 }
-

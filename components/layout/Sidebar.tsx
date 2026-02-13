@@ -63,6 +63,11 @@ const sidebarSections: SidebarSection[] = [
         label: "Suppliers",
         icon: <Truck className="h-5 w-5" />,
       },
+      {
+        href: "/kitchen",
+        label: "Kitchen Display",
+        icon: <ChefHat className="h-5 w-5" />,
+      },
     ],
   },
   {

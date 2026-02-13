@@ -53,7 +53,7 @@ import type { HoldOrder, getHoldOrders } from "@/lib/services/hold-orders"
 function POSContent() {
   const router = useRouter()
   const { userData } = useAuth()
-  const { activeStaff, clearActiveStaff, setActiveStaff } = useStaff()
+  const { activeStaff, clearActiveStaff, setActiveStaff, refreshActiveStaff } = useStaff()
   const {
     items,
     addItem,
@@ -106,12 +106,16 @@ function POSContent() {
     router.push("/lock-screen")
   }
 
-  // Check if cashier needs to open shift (active_shift_id is null)
+  // Roles that can use POS with shift management (cashier, manager, owner, supervisor)
+  const allowedPOSRoles = ['cashier', 'manager', 'owner', 'supervisor']
+  const canUseShifts = activeStaff && allowedPOSRoles.includes(activeStaff.role || '')
+
+  // Check if user needs to open shift (active_shift_id is null)
   useEffect(() => {
-    if (activeStaff && activeStaff.role === 'cashier' && !activeStaff.active_shift_id) {
+    if (canUseShifts && !activeStaff?.active_shift_id) {
       setIsOpenShiftModalOpen(true)
     }
-  }, [activeStaff])
+  }, [activeStaff, canUseShifts])
 
   // Check for recalled orders from sessionStorage (when returning from /pos/held)
   useEffect(() => {
@@ -160,18 +164,18 @@ function POSContent() {
     }
   }, [clearCart, addItem, setDiscount])
 
-  // Fetch active shift for cashier
+  // Fetch active shift for POS roles (not just cashiers)
   const { data: activeShift, refetch: refetchShift } = useQuery({
     queryKey: ["active-shift", activeStaff?.id],
     queryFn: async () => {
-      if (!activeStaff || activeStaff.role !== 'cashier') {
+      if (!canUseShifts) {
         return null
       }
       // getActiveShift returns Shift | null directly
-      const shift = await getActiveShift(activeStaff.id)
+      const shift = await getActiveShift(activeStaff!.id)
       return shift
     },
-    enabled: !!activeStaff && activeStaff.role === 'cashier',
+    enabled: !!canUseShifts,
   })
 
   // Fetch active attendance
@@ -319,6 +323,7 @@ function POSContent() {
         paymentMethod,
         branchId: userData.branchId,
         cashierId: userData.id,
+        shiftId: activeShift?.id, // Include shiftId for accurate shift correlation
         discount: discount ? {
           type: discount.type,
           value: discount.value,
@@ -488,7 +493,7 @@ function POSContent() {
                     <DropdownMenuSeparator />
                   </>
                 )}
-                {activeStaff && activeStaff.role === 'cashier' && activeShift && (
+                {activeStaff && canUseShifts && activeShift && (
                   <>
                     <DropdownMenuItem
                       onClick={() => setIsCloseShiftModalOpen(true)}
@@ -565,28 +570,23 @@ function POSContent() {
         </DialogContent>
       </Dialog>
 
-      {/* Open Shift Modal - Shows immediately for cashiers without active shift */}
-      {activeStaff && activeStaff.role === 'cashier' && (
+      {/* Open Shift Modal - Shows immediately for POS roles without active shift */}
+      {canUseShifts && (
         <OpenShiftModal
-          open={isOpenShiftModalOpen}
+          open={isOpenShiftModalOpen && !activeStaff?.active_shift_id && !activeShift}
           onOpenChange={(open) => {
             // Prevent closing if shift hasn't been opened yet
-            if (!open && !activeStaff.active_shift_id && !activeShift) {
+            if (!open && !activeStaff?.active_shift_id && !activeShift) {
               return
             }
             setIsOpenShiftModalOpen(open)
           }}
-          staffId={activeStaff.id}
-          staffName={activeStaff.name || 'Staff'}
+          staffId={activeStaff?.id || ''}
+          staffName={activeStaff?.name || 'Staff'}
           branchId={userData?.branchId || ''}
-          onShiftOpened={(shift: Shift) => {
-            // Update activeStaff in context with the new active_shift_id
-            if (activeStaff) {
-              setActiveStaff({
-                ...activeStaff,
-                active_shift_id: shift.id,
-              })
-            }
+          onShiftOpened={async (shift: Shift) => {
+            // Refresh staff data to get updated active_shift_id
+            await refreshActiveStaff()
             refetchShift()
             setIsOpenShiftModalOpen(false)
             toast({
@@ -604,19 +604,10 @@ function POSContent() {
           onOpenChange={setIsCloseShiftModalOpen}
           shift={activeShift}
           staffName={activeStaff.name || 'Staff'}
+          attendanceId={activeAttendance?.id}
           onShiftClosed={() => {
-            refetchShift()
+            // Modal handles clearing staff and redirecting to lock-screen
             setIsCloseShiftModalOpen(false)
-            if (activeStaff) {
-              setActiveStaff({
-                ...activeStaff,
-                active_shift_id: undefined,
-              })
-            }
-            toast({
-              title: "Shift Closed",
-              description: "Your shift has been closed successfully.",
-            })
           }}
         />
       )}

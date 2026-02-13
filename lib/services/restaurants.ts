@@ -25,15 +25,15 @@ export async function getRestaurantByBranch(branchId: string): Promise<Restauran
       limit(1)
     );
     const snapshot = await getDocs(q);
-    
+
     if (!snapshot.empty) {
       const doc = snapshot.docs[0];
       return {
         id: doc.id,
-        ...doc.data(),
+        ...(doc.data() as any),
       } as Restaurant;
     }
-    
+
     return null;
   } catch (error) {
     console.error('Error fetching restaurant:', error);
@@ -48,14 +48,14 @@ export async function getRestaurantById(id: string): Promise<Restaurant | null> 
   try {
     const docRef = doc(restaurantsCollection, id);
     const docSnap = await getDoc(docRef);
-    
+
     if (docSnap.exists()) {
       return {
         id: docSnap.id,
-        ...docSnap.data(),
+        ...(docSnap.data() as any),
       } as Restaurant;
     }
-    
+
     return null;
   } catch (error) {
     console.error('Error fetching restaurant:', error);
@@ -87,21 +87,21 @@ export function getDefaultRestaurantSettings(branchId: string): Restaurant {
  */
 export async function incrementInvoiceSequence(restaurantId: string): Promise<number> {
   const restaurantRef = doc(restaurantsCollection, restaurantId);
-  
+
   return await runTransaction(db, async (transaction) => {
     const restaurantDoc = await transaction.get(restaurantRef);
-    
+
     if (!restaurantDoc.exists()) {
       throw new Error('Restaurant not found');
     }
-    
+
     const currentSequence = restaurantDoc.data().invoiceSerialSequence || 0;
     const newSequence = currentSequence + 1;
-    
+
     transaction.update(restaurantRef, {
       invoiceSerialSequence: newSequence,
     });
-    
+
     return newSequence;
   });
 }

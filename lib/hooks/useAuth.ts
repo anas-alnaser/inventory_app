@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react'
-import { 
+import {
   User as FirebaseUser,
-  onAuthStateChanged, 
+  onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
@@ -45,12 +45,12 @@ export function useAuth() {
     try {
       const userDocRef = doc(db, 'users', uid)
       const userDoc = await getDoc(userDocRef)
-      
+
       if (userDoc.exists()) {
         // User document exists, return it
         const data = userDoc.data()
-        return { 
-          id: userDoc.id, 
+        return {
+          id: userDoc.id,
           name: data.name || displayName || email?.split('@')[0] || 'User',
           email: data.email || email || '',
           password_hash: data.password_hash || '',
@@ -61,16 +61,16 @@ export function useAuth() {
           pin_code: data.pin_code,
           is_store_device: data.is_store_device ?? false,
           active_shift_id: data.active_shift_id ?? null,
-          restaurantId: data.restaurantId || data.restaurant_id || null,
-          branchId: data.branchId || data.branch_id || null,
+          restaurantId: data.restaurantId || data.restaurant_id || undefined,
+          branchId: data.branchId || data.branch_id || undefined,
         } as User
       }
-      
+
       // User document does NOT exist - auto-create it
       // Check if this is the first user (make them owner) or default to cashier
       const usersSnapshot = await getDocs(collection(db, 'users'))
       const isFirstUser = usersSnapshot.empty
-      
+
       const newUserData = {
         name: displayName || email?.split('@')[0] || 'New User',
         email: email || '',
@@ -80,11 +80,11 @@ export function useAuth() {
         is_store_device: false,
         active_shift_id: null,
       }
-      
+
       await setDoc(userDocRef, newUserData)
-      
-      return { 
-        id: uid, 
+
+      return {
+        id: uid,
         name: newUserData.name,
         email: newUserData.email,
         password_hash: newUserData.password_hash,
@@ -92,8 +92,8 @@ export function useAuth() {
         created_at: new Date().toISOString(), // Convert for return value
         is_store_device: newUserData.is_store_device,
         active_shift_id: newUserData.active_shift_id,
-        restaurantId: null,
-        branchId: null,
+        restaurantId: undefined,
+        branchId: undefined,
       } as User
     } catch (error) {
       console.error('Error fetching/creating user data:', error)
@@ -130,9 +130,9 @@ export function useAuth() {
   }, [fetchUserData])
 
   // Sign up with email and password
-  const signUp = async ({ email, password, name, role = 'stock_keeper' }: SignUpData) => {
+  const signUp = async ({ email, password, name, role = 'stock_manager' }: SignUpData) => {
     setState(prev => ({ ...prev, loading: true, error: null }))
-    
+
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password)
       const firebaseUser = userCredential.user
@@ -153,8 +153,8 @@ export function useAuth() {
 
       await setDoc(doc(db, 'users', firebaseUser.uid), userData)
 
-      const fullUserData = { 
-        id: firebaseUser.uid, 
+      const fullUserData = {
+        id: firebaseUser.uid,
         name: userData.name,
         email: userData.email,
         password_hash: userData.password_hash,
@@ -162,8 +162,8 @@ export function useAuth() {
         created_at: new Date().toISOString(), // Convert for return value
         is_store_device: userData.is_store_device,
         active_shift_id: userData.active_shift_id,
-        restaurantId: null,
-        branchId: null,
+        restaurantId: undefined,
+        branchId: undefined,
       } as User
 
       setState({
@@ -184,7 +184,7 @@ export function useAuth() {
   // Sign in with email and password
   const signIn = async ({ email, password }: SignInData) => {
     setState(prev => ({ ...prev, loading: true, error: null }))
-    
+
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
       const firebaseUser = userCredential.user
@@ -237,17 +237,17 @@ export function useAuth() {
   const isOwner = (): boolean => {
     return hasRole('owner')
   }
-  
+
   // Check if user is owner or manager
   const isOwnerOrManager = (): boolean => {
     return hasRole(['owner', 'manager'])
   }
-  
+
   // Check if user is admin or owner (for backward compatibility)
   const isAdminOrOwner = (): boolean => {
     return hasRole('owner')
   }
-  
+
   // Check if user is admin, owner, or manager (for backward compatibility)
   const isAdminOrManager = (): boolean => {
     return hasRole(['owner', 'manager'])

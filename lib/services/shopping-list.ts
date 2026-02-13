@@ -43,11 +43,11 @@ export async function generateWeeklyShoppingList(branchId: string): Promise<Week
   }
 
   // Get all forecasts
-  const forecasts = await generateAllForecasts()
-  
+  const forecasts = await generateAllForecasts(branchId)
+
   // Get all ingredients to access supplier_id and max_stock_level
   const ingredients = await getIngredients()
-  
+
   // Filter forecasts for items running out within 7 days
   const criticalForecasts = forecasts.filter(
     forecast => forecast.daysRemaining <= 7 && forecast.daysRemaining > 0 && forecast.daysRemaining < Infinity
@@ -58,7 +58,7 @@ export async function generateWeeklyShoppingList(branchId: string): Promise<Week
 
   for (const forecast of criticalForecasts) {
     const ingredient = ingredients.find(ing => ing.id === forecast.ingredientId)
-    
+
     if (!ingredient) continue
 
     // Get current stock (filtered by branchId)
@@ -67,7 +67,7 @@ export async function generateWeeklyShoppingList(branchId: string): Promise<Week
 
     // Calculate quantity needed to reach max_stock_level
     const maxStockLevel = ingredient.max_stock_level || 0
-    
+
     // If no max_stock_level set, use recommended reorder amount or calculate based on 14 days usage
     let quantityNeeded = 0
     if (maxStockLevel > 0) {
@@ -107,7 +107,7 @@ export async function generateWeeklyShoppingList(branchId: string): Promise<Week
 
     const supplierId = ingredient.supplier_id
     const supplier = await getSupplierById(supplierId)
-    
+
     if (!supplier) continue
 
     if (!supplierMap.has(supplierId)) {
@@ -152,7 +152,7 @@ export function formatShoppingListForWhatsApp(
   supplierGroup: ShoppingListBySupplier
 ): string {
   const lines: string[] = []
-  
+
   lines.push(`📋 *Order for ${supplierGroup.supplierName}*`)
   lines.push('')
   lines.push('Please provide the following items:')
@@ -179,10 +179,10 @@ export function generateWhatsAppUrl(
 ): string {
   // Remove any non-digit characters from phone number
   const cleanPhone = phone.replace(/\D/g, '')
-  
+
   // Encode message for URL
   const encodedMessage = encodeURIComponent(message)
-  
+
   // Generate WhatsApp URL
   return `https://wa.me/${cleanPhone}?text=${encodedMessage}`
 }

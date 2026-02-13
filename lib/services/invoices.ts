@@ -24,6 +24,7 @@ export interface SubmitInvoiceData {
   paymentMethod: 'Cash' | 'Visa' | 'CliQ';
   branchId: string;
   cashierId: string;
+  shiftId?: string; // Associated shift ID for accurate shift correlation
   discount?: {
     type: 'percentage' | 'fixed';
     value: number;
@@ -125,7 +126,7 @@ export async function submitInvoice(
       if (menuItemDoc.exists()) {
         const menuItem = {
           id: menuItemDoc.id,
-          ...menuItemDoc.data(),
+          ...(menuItemDoc.data() as any),
         } as MenuItem;
 
         menuItemsMap.set(cartItem.menuItemId, menuItem);
@@ -237,6 +238,7 @@ export async function submitInvoice(
       invoiceNumber,
       branch_id: data.branchId,
       cashier_id: data.cashierId,
+      ...(data.shiftId ? { shiftId: data.shiftId } : {}), // Include shiftId if provided
       items: invoiceItems,
       subtotal: totals.subtotal,
       discountAmount: totals.discountAmount,
@@ -251,7 +253,8 @@ export async function submitInvoice(
       grandTotal: totals.grandTotal,
       paymentMethod: data.paymentMethod,
       qrCodeString,
-      created_at: Timestamp.now(),
+      kitchenStatus: 'pending', // New orders start as pending for KDS
+      created_at: Timestamp.now().toDate(),
     };
 
     // Step 7: Pre-fetch stock records for inventory deduction
@@ -284,7 +287,7 @@ export async function submitInvoice(
             docId: stockDoc.id,
             stock: {
               id: stockDoc.id,
-              ...stockDoc.data(),
+              ...(stockDoc.data() as any),
             } as IngredientStock,
           });
         } else {
@@ -299,8 +302,8 @@ export async function submitInvoice(
               branch_id: data.branchId,
               ingredient_id: recipeItem.ingredientId,
               quantity: 0,
-              expiry_date: Timestamp.now(),
-              last_updated: Timestamp.now(),
+              expiry_date: Timestamp.now().toDate(),
+              last_updated: Timestamp.now().toDate(),
             } as IngredientStock,
           });
         }
@@ -370,7 +373,7 @@ export async function submitInvoice(
       transaction.set(invoiceRef, {
         ...invoiceData,
         created_at: serverTimestamp(),
-      });
+      } as any);
 
       // Update/create stock records
       for (const [ingredientId, stockInfo] of stockDocs) {
@@ -382,7 +385,7 @@ export async function submitInvoice(
           transaction.update(update.stockRef, {
             quantity: currentQuantity - update.deduction,
             last_updated: serverTimestamp(),
-          });
+          } as any);
         } else {
           // Create new stock record with negative quantity (deducting from 0)
           transaction.set(update.stockRef, {
@@ -391,7 +394,7 @@ export async function submitInvoice(
             quantity: -update.deduction,
             expiry_date: serverTimestamp(),
             last_updated: serverTimestamp(),
-          });
+          } as any);
         }
 
         // Create stock log
@@ -404,7 +407,7 @@ export async function submitInvoice(
           reason: 'sale',
           notes: `Invoice ${invoiceNumber}`,
           created_at: serverTimestamp(),
-        });
+        } as any);
       }
 
       return invoiceRef.id;
@@ -418,7 +421,7 @@ export async function submitInvoice(
 
     const invoice: Invoice = {
       id: invoiceDoc.id,
-      ...invoiceDoc.data(),
+      ...(invoiceDoc.data() as any),
     } as Invoice;
 
     return {

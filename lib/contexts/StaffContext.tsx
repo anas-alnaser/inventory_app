@@ -1,74 +1,133 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { User } from '@/types/entities'
+import { doc, getDoc } from 'firebase/firestore'
+import { db } from '@/lib/firebase'
+import { getUserByPin } from '@/lib/services/users'
+import type { User } from '@/types/entities'
+
+const LOCAL_STORAGE_KEY = 'activeStaffId'
 
 interface StaffContextType {
   activeStaff: User | null
+  isLoading: boolean
+  loginWithPin: (pin: string, branchId?: string) => Promise<{ success: boolean; error?: string; user?: User }>
+  logout: () => void
+  clearActiveStaff: () => void  // Alias for logout (backwards compatibility)
   setActiveStaff: (user: User | null) => void
-  clearActiveStaff: () => void
+  refreshActiveStaff: () => Promise<void>  // Fetch fresh user data from Firestore
 }
 
 const StaffContext = createContext<StaffContextType | undefined>(undefined)
 
-const LOCAL_STORAGE_KEY = 'activeStaff'
-
 export function StaffProvider({ children }: { children: React.ReactNode }) {
   const [activeStaff, setActiveStaffState] = useState<User | null>(null)
-  const [isInitialized, setIsInitialized] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Initialize from localStorage on mount
+  // Initialize: Check localStorage and fetch user from Firestore
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    const initializeStaff = async () => {
+      if (typeof window === 'undefined') {
+        setIsLoading(false)
+        return
+      }
+
       try {
-        const stored = localStorage.getItem(LOCAL_STORAGE_KEY)
-        if (stored) {
-          const parsed = JSON.parse(stored) as User
-          setActiveStaffState(parsed)
+        const storedId = localStorage.getItem(LOCAL_STORAGE_KEY)
+
+        if (storedId) {
+          // Fetch fresh user data from Firestore
+          const userDoc = await getDoc(doc(db, 'users', storedId))
+
+          if (userDoc.exists()) {
+            const userData = { id: userDoc.id, ...userDoc.data() } as User
+            setActiveStaffState(userData)
+          } else {
+            // User no longer exists - clear localStorage
+            localStorage.removeItem(LOCAL_STORAGE_KEY)
+          }
         }
       } catch (error) {
-        console.error('Error loading activeStaff from localStorage:', error)
+        console.error('[StaffContext] Error initializing:', error)
         localStorage.removeItem(LOCAL_STORAGE_KEY)
       } finally {
-        setIsInitialized(true)
+        setIsLoading(false)
       }
-    } else {
-      setIsInitialized(true)
+    }
+
+    initializeStaff()
+  }, [])
+
+  // Login with PIN
+  const loginWithPin = useCallback(async (
+    pin: string,
+    branchId?: string
+  ): Promise<{ success: boolean; error?: string; user?: User }> => {
+    try {
+      const user = await getUserByPin(pin.trim(), branchId)
+
+      if (!user) {
+        return { success: false, error: 'Invalid PIN' }
+      }
+
+      // Save to state and localStorage
+      setActiveStaffState(user)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LOCAL_STORAGE_KEY, user.id)
+      }
+
+      return { success: true, user }
+    } catch (error: any) {
+      console.error('[StaffContext] Login error:', error)
+      return { success: false, error: error.message || 'Login failed' }
     }
   }, [])
 
-  // Set active staff and persist to localStorage
+  // Logout - clear state and localStorage
+  const logout = useCallback(() => {
+    setActiveStaffState(null)
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(LOCAL_STORAGE_KEY)
+    }
+  }, [])
+
+  // Set active staff directly (for backward compatibility)
   const setActiveStaff = useCallback((user: User | null) => {
     setActiveStaffState(user)
     if (typeof window !== 'undefined') {
-      try {
-        if (user) {
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(user))
-        } else {
-          localStorage.removeItem(LOCAL_STORAGE_KEY)
-        }
-      } catch (error) {
-        console.error('Error saving activeStaff to localStorage:', error)
+      if (user) {
+        localStorage.setItem(LOCAL_STORAGE_KEY, user.id)
+      } else {
+        localStorage.removeItem(LOCAL_STORAGE_KEY)
       }
     }
   }, [])
 
-  // Clear active staff
-  const clearActiveStaff = useCallback(() => {
-    setActiveStaff(null)
-  }, [setActiveStaff])
-
-  // Don't render children until initialized (prevents flash of wrong state)
-  if (!isInitialized) {
-    return null
-  }
+  // Refresh active staff from Firestore (get fresh data including active_shift_id)
+  const refreshActiveStaff = useCallback(async () => {
+    if (!activeStaff?.id) return
+    try {
+      const userDoc = await getDoc(doc(db, 'users', activeStaff.id))
+      if (userDoc.exists()) {
+        const userData = { id: userDoc.id, ...userDoc.data() } as User
+        setActiveStaffState(userData)
+        console.log('[StaffContext] Refreshed staff data:', userData.active_shift_id)
+      }
+    } catch (error) {
+      console.error('[StaffContext] Error refreshing staff:', error)
+    }
+  }, [activeStaff?.id])
 
   return (
     <StaffContext.Provider
       value={{
         activeStaff,
+        isLoading,
+        loginWithPin,
+        logout,
+        clearActiveStaff: logout,  // Alias for backwards compatibility
         setActiveStaff,
-        clearActiveStaff,
+        refreshActiveStaff,
       }}
     >
       {children}

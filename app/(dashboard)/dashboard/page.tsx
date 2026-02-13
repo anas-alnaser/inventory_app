@@ -10,24 +10,24 @@ import { GettingStartedChecklist } from "@/components/dashboard/GettingStartedCh
 import { useAuth } from "@/lib/hooks/useAuth"
 import { useSettings } from "@/lib/hooks/useSettings"
 import { Button } from "@/components/ui/button"
-import { 
-  getIngredients, 
-  getStockLogs, 
+import {
+  getIngredients,
+  getStockLogs,
   getPurchaseOrders,
   listenToInventoryWithStock,
   getTodaySales,
   getSuppliers,
   getMenuItemsWithFinancials,
-  type InventoryItem 
+  type InventoryItem
 } from "@/lib/services"
 import { getAllUsers } from "@/lib/services"
 import { getMostCriticalForecast } from "@/lib/ai/forecast"
-import { 
-  Truck, 
-  AlertTriangle, 
-  DollarSign, 
-  Package, 
-  CheckCircle2, 
+import {
+  Truck,
+  AlertTriangle,
+  DollarSign,
+  Package,
+  CheckCircle2,
   Archive,
   TrendingUp
 } from "lucide-react"
@@ -144,12 +144,12 @@ export default function DashboardPage() {
 
   // Calculate dashboard stats
   const totalItems = ingredients.length
-  
+
   // Calculate incoming deliveries for today
   const today = new Date()
   const incomingDeliveries = activeOrders.filter(order => {
     if (!order.expected_delivery_date) return false
-    
+
     // Handle Firestore timestamp or Date object or string
     let date: Date
     if (order.expected_delivery_date instanceof Date) {
@@ -159,7 +159,7 @@ export default function DashboardPage() {
     } else {
       date = new Date(order.expected_delivery_date as any)
     }
-    
+
     return date.getDate() === today.getDate() &&
       date.getMonth() === today.getMonth() &&
       date.getFullYear() === today.getFullYear()
@@ -173,7 +173,7 @@ export default function DashboardPage() {
     return item.stock?.quantity! > 0 && item.stock?.quantity! <= minLevel
   })
   const outOfStockItems = inventory.filter(item => (item.stock?.quantity || 0) <= 0)
-  
+
   const totalValue = inventory.reduce((sum, item) => {
     const stockQuantity = item.stock?.quantity || 0
     const costPerUnit = item.ingredient.cost_per_unit || 0
@@ -189,11 +189,11 @@ export default function DashboardPage() {
     const ingredient = ingredients.find(i => i.id === log.ingredient_id)
     const userName = user?.name || "Unknown User"
     const ingredientName = ingredient?.name || "Unknown Item"
-    
+
     const isPositive = log.change_amount > 0
     const action = isPositive ? "Stock Added" : "Stock Used"
     const amount = Math.abs(log.change_amount)
-    
+
     // Format time
     const timeAgo = formatTimeAgo(log.created_at)
 
@@ -207,9 +207,13 @@ export default function DashboardPage() {
 
   // Fetch most critical forecast for AI Insight
   const { data: criticalForecast, isLoading: forecastLoading } = useQuery({
-    queryKey: ["critical-forecast"],
-    queryFn: () => getMostCriticalForecast(),
+    queryKey: ["critical-forecast", userData?.branchId],
+    queryFn: () => {
+      if (!userData?.branchId) return null;
+      return getMostCriticalForecast(userData.branchId);
+    },
     refetchInterval: 60000, // Refetch every minute
+    enabled: !!userData?.branchId,
   })
 
   // Build AI insights from real forecast data
@@ -310,7 +314,7 @@ export default function DashboardPage() {
               <span className="text-sm text-muted-foreground">deliveries</span>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
-              {uniqueSuppliers > 0 
+              {uniqueSuppliers > 0
                 ? `${uniqueSuppliers} Supplier${uniqueSuppliers !== 1 ? 's' : ''} arriving`
                 : 'No deliveries expected'
               }
@@ -359,16 +363,16 @@ export default function DashboardPage() {
               {outOfStockItems.length}
             </span>
           </div>
-          
+
           {outOfStockItems.length > 0 ? (
             <div className="space-y-3">
               <div className="max-h-[120px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
                 {outOfStockItems.map((item) => (
                   <div key={item.id} className="flex items-center justify-between p-2 rounded-md bg-background/50 border border-red-500/10">
                     <span className="text-sm font-medium truncate flex-1 mr-2">{item.ingredient.name}</span>
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       className="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10"
                       onClick={() => setRestockId(item.id)}
                     >
@@ -416,9 +420,9 @@ export default function DashboardPage() {
                         {item.stock?.quantity} {item.ingredient.unit} left
                       </span>
                     </div>
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       className="h-7 text-xs text-yellow-500 hover:text-yellow-600 hover:bg-yellow-500/10"
                       onClick={() => setRestockId(item.id)}
                     >
@@ -440,7 +444,7 @@ export default function DashboardPage() {
       {/* Needs Attention Section (Mini Cards) */}
       {needsAttentionItems.length > 0 && (
         <section className="space-y-3">
-           <motion.h2
+          <motion.h2
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
@@ -448,7 +452,7 @@ export default function DashboardPage() {
           >
             Needs Attention
           </motion.h2>
-          
+
           <div className="flex overflow-x-auto gap-4 pb-4 -mx-4 px-4 md:mx-0 md:px-0 custom-scrollbar scroll-smooth">
             {needsAttentionItems.map((item, idx) => (
               <motion.div
@@ -470,8 +474,8 @@ export default function DashboardPage() {
                       {(item.stock?.quantity || 0) <= 0 ? "Out of Stock" : `${item.stock?.quantity} ${item.ingredient.unit} left`}
                     </p>
                   </div>
-                  <Button 
-                    size="sm" 
+                  <Button
+                    size="sm"
                     className="w-full h-8 text-xs"
                     onClick={() => setRestockId(item.id)}
                   >
@@ -509,10 +513,10 @@ export default function DashboardPage() {
           >
             AI Insights
           </motion.h2>
-          <AIInsightCard 
-            insights={aiInsights} 
+          <AIInsightCard
+            insights={aiInsights}
             isLoading={forecastLoading}
-            isEligible={aiInsights.length > 0 || !forecastLoading} 
+            isEligible={aiInsights.length > 0 || !forecastLoading}
           />
         </section>
 

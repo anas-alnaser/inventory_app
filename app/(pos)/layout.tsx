@@ -1,12 +1,16 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useEffect, useState, useCallback } from "react"
+import { useRouter } from "next/navigation"
+import { doc, getDoc } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 import { ThemeSync } from "@/components/layout/ThemeSync"
+import { StaffGuard } from "@/components/layout/StaffGuard"
+import { OpenShiftModal } from "@/components/shifts/OpenShiftModal"
 import { useAuth } from "@/lib/hooks/useAuth"
 import { useStaff } from "@/lib/contexts/StaffContext"
-import { Skeleton } from "@/components/ui/skeleton"
-import { canAccessPOS, getEffectiveRole } from "@/lib/utils/role-permissions"
+import { Loader2 } from "lucide-react"
+import type { User } from "@/types/entities"
 
 export default function POSLayout({
   children,
@@ -14,82 +18,132 @@ export default function POSLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
-  const pathname = usePathname()
-  const { isAuthenticated, loading, userData } = useAuth()
-  const { activeStaff } = useStaff()
+  const { isAuthenticated, loading: authLoading } = useAuth()
+  const { activeStaff, isLoading: staffLoading, setActiveStaff, refreshActiveStaff } = useStaff()
 
-  // Protect POS routes - redirect if not authenticated or unauthorized
+  // Roles that can use POS with shift management
+  const allowedPOSRoles = ['cashier', 'manager', 'owner', 'supervisor']
+  const canUseShifts = activeStaff && allowedPOSRoles.includes(activeStaff.role || '')
+
+  const [checkingShift, setCheckingShift] = useState(true)
+  const [hasActiveShift, setHasActiveShift] = useState(false)
+  const [showOpenShiftModal, setShowOpenShiftModal] = useState(false)
+
+  // Check if user has active shift
+  const checkActiveShift = useCallback(async () => {
+    if (!activeStaff) return
+
+    setCheckingShift(true)
+    try {
+      // Use refreshActiveStaff to get fresh data
+      await refreshActiveStaff()
+
+      // Then check the updated state
+      const userDoc = await getDoc(doc(db, 'users', activeStaff.id))
+
+      if (userDoc.exists()) {
+        const userData = { id: userDoc.id, ...userDoc.data() } as User
+        const hasShift = !!userData.active_shift_id
+        setHasActiveShift(hasShift)
+
+        // Update context with fresh data
+        setActiveStaff(userData)
+
+        // If no active shift AND user can use shifts, show modal
+        if (!hasShift && allowedPOSRoles.includes(userData.role || '')) {
+          setShowOpenShiftModal(true)
+        } else if (!hasShift) {
+          // User can't use shifts, redirect to dashboard
+          router.replace('/dashboard')
+        }
+      }
+    } catch (error) {
+      console.error('[POSLayout] Error checking shift:', error)
+    } finally {
+      setCheckingShift(false)
+    }
+  }, [activeStaff?.id, setActiveStaff, refreshActiveStaff, router])
+
+  // Check shift on mount and when staff changes
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      router.push("/login")
-      return
+    if (!staffLoading && activeStaff) {
+      checkActiveShift()
     }
+  }, [staffLoading, activeStaff?.id])
 
-    // If authenticated, check permissions
-    if (!loading && isAuthenticated && userData) {
-      // Get effective role (for store devices, use activeStaff role)
-      const effectiveRole = getEffectiveRole(
-        userData.role,
-        activeStaff?.role,
-        userData.is_store_device === true
-      )
-
-      // Check if user can access POS
-      if (!canAccessPOS(effectiveRole)) {
-        // Stock Manager cannot access POS - redirect to inventory
-        if (effectiveRole === 'stock_manager') {
-          router.push("/inventory")
-          return
-        }
-        // For store devices without activeStaff, redirect to lock screen
-        if (userData.is_store_device === true && !activeStaff) {
-          router.push("/lock-screen")
-          return
-        }
-        // Default redirect to dashboard
-        router.push("/dashboard")
-        return
-      }
-
-      // Store device: Must have activeStaff to access POS
-      if (userData.is_store_device === true) {
-        if (!activeStaff) {
-          router.push("/lock-screen")
-          return
-        }
-      }
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace("/login")
     }
-  }, [isAuthenticated, loading, router, userData, activeStaff, pathname])
+  }, [isAuthenticated, authLoading, router])
 
-  // Show loading state while checking auth
-  if (loading) {
+  // Show loading while checking auth or staff
+  if (authLoading || staffLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="space-y-4">
-          <Skeleton className="h-12 w-64" />
-          <Skeleton className="h-8 w-48" />
+      <div className="h-screen w-full flex items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     )
   }
 
-  // Don't render POS if not authenticated
+  // Don't render if not authenticated
   if (!isAuthenticated) {
     return null
   }
 
-  // Don't render POS for store devices without activeStaff
-  if (userData?.is_store_device === true && !activeStaff) {
-    return null
-  }
-
-  // Full screen layout - no sidebar, no TopBar, no BottomNav
+  // StaffGuard handles staff auth and role-based redirects
   return (
-    <div className="h-screen w-screen overflow-hidden bg-background">
-      {/* Theme Sync - syncs theme from Firestore */}
-      <ThemeSync />
-      {children}
-    </div>
+    <StaffGuard>
+      <div className="h-screen w-screen overflow-hidden bg-background">
+        <ThemeSync />
+
+        {/* Show loading while checking shift */}
+        {checkingShift ? (
+          <div className="h-full w-full flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+              <p className="text-muted-foreground">Checking shift status...</p>
+            </div>
+          </div>
+        ) : hasActiveShift ? (
+          // Render POS if shift is open
+          children
+        ) : (
+          // Show message if no shift (modal will handle it)
+          <div className="h-full w-full flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <p className="text-muted-foreground">Please open a shift to continue</p>
+            </div>
+          </div>
+        )}
+
+        {/* Open Shift Modal - shown when no active shift (for POS roles) */}
+        {canUseShifts && (
+          <OpenShiftModal
+            open={showOpenShiftModal && !hasActiveShift}
+            onOpenChange={(open) => {
+              // Don't allow closing modal if no active shift
+              if (!hasActiveShift && !open) {
+                // User tried to close - redirect to lock screen
+                router.replace('/lock-screen')
+                return
+              }
+              setShowOpenShiftModal(open)
+            }}
+            staffId={activeStaff?.id || ''}
+            onSuccess={async () => {
+              // Refresh user data to get new active_shift_id
+              await refreshActiveStaff()
+              await checkActiveShift()
+              setShowOpenShiftModal(false)
+            }}
+          />
+        )}
+      </div>
+    </StaffGuard>
   )
 }
-

@@ -57,6 +57,18 @@ export async function getAllStock(branchId: string): Promise<StockWithIngredient
   return stocksWithIngredients;
 }
 
+/**
+ * Get all ingredient stock records (for anomaly detection)
+ * Returns raw stock data without branch filter
+ */
+export async function getAllIngredientStock(): Promise<IngredientStock[]> {
+  const snapshot = await getDocs(ingredientStockRef);
+  return snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() as object),
+  })) as IngredientStock[];
+}
+
 export async function getStockByIngredient(
   ingredientId: string,
   branchId: string
@@ -117,12 +129,12 @@ export async function addStock(data: AddStockData): Promise<void> {
       quantity: baseQuantity,
       last_updated: serverTimestamp(),
     };
-    
+
     // Only add expiry_date if provided
     if (data.expiry_date) {
       newStockData.expiry_date = Timestamp.fromDate(data.expiry_date);
     }
-    
+
     batch.set(newStockRef, newStockData);
   }
 
@@ -136,12 +148,12 @@ export async function addStock(data: AddStockData): Promise<void> {
     reason: 'purchase' as StockLogReason,
     created_at: serverTimestamp(),
   };
-  
+
   // Only add notes if provided
   if (data.notes !== undefined && data.notes !== null) {
     logData.notes = data.notes;
   }
-  
+
   batch.set(logRef, logData);
 
   await batch.commit();
@@ -195,12 +207,12 @@ export async function useStock(data: UseStockData): Promise<void> {
     reason: data.reason || 'sale',
     created_at: serverTimestamp(),
   };
-  
+
   // Only add notes if provided
   if (data.notes !== undefined && data.notes !== null) {
     logData.notes = data.notes;
   }
-  
+
   batch.set(logRef, logData);
 
   await batch.commit();
@@ -226,13 +238,13 @@ export async function updateStockTransaction(
     limit(1)
   );
   const stockSnapshot = await getDocs(stockQuery);
-  
+
   await runTransaction(db, async (transaction) => {
     let stockRef: any;
     let currentQuantity = 0;
-    
+
     if (!stockSnapshot.empty) {
-      stockRef = doc(ingredientStockRef, stockSnapshot.docs[0].id);     
+      stockRef = doc(ingredientStockRef, stockSnapshot.docs[0].id);
       const stockDoc = await transaction.get(stockRef);
       const stockData = stockDoc.data() as IngredientStock | undefined;
       currentQuantity = stockData?.quantity || 0;
@@ -246,20 +258,20 @@ export async function updateStockTransaction(
         last_updated: serverTimestamp(),
       });
     }
-    
+
     const newQuantity = currentQuantity + changeAmount;
-    
+
     // Prevent negative stock
     if (newQuantity < 0) {
       throw new Error('Insufficient stock. Cannot go below zero.');
     }
-    
+
     // Update stock
     transaction.update(stockRef, {
       quantity: newQuantity,
       last_updated: serverTimestamp(),
     });
-    
+
     // Create stock log
     const logRef = doc(stockLogsRef);
     transaction.set(logRef, {

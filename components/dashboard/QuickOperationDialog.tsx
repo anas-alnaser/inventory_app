@@ -62,7 +62,7 @@ const isPurchaseUnit = (unit: string, ingredient?: Ingredient) => {
   // we'll rely on what's available or default logic.
   // For this fix, we will just pass the unit selected.
   // If we had the extended ingredient data with purchaseUnit and purchaseUnitSize, we would check that.
-  return false; 
+  return false;
 }
 
 export function QuickOperationDialog({
@@ -75,7 +75,7 @@ export function QuickOperationDialog({
   const { toast } = useToast()
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [loading, setLoading] = useState(false)
-  
+
   // We don't strictly need this local state if we use form.watch, but it's handy for unit logic
   const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null)
 
@@ -122,7 +122,7 @@ export function QuickOperationDialog({
     if (watchedIngredientId && ingredients.length > 0) {
       const ing = ingredients.find((i) => i.id === watchedIngredientId)
       setSelectedIngredient(ing || null)
-      
+
       if (ing) {
         // Auto-select the base unit
         form.setValue("unit", ing.unit, { shouldValidate: true })
@@ -136,10 +136,10 @@ export function QuickOperationDialog({
 
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    if (!userData?.id) {
+    if (!userData?.id || !userData?.branchId) {
       toast({
         title: "Error",
-        description: "You must be logged in to perform this action.",
+        description: "Branch information missing. Please log in again.",
         variant: "destructive",
       })
       return
@@ -148,17 +148,18 @@ export function QuickOperationDialog({
     setLoading(true)
     try {
       let quantity = Number(values.quantity)
-      
+
       // Simple unit conversion logic if we had purchase units
       // For now, we are forcing the base unit so 1:1 conversion
       // If we implemented purchase units, we would multiply by purchaseUnitSize here
-      
+
       // Calculate final change amount
       // Log usage means subtracting stock, so we multiply by -1 for usage
       const changeAmount = (mode === "add" ? 1 : -1) * quantity
-      
+
       console.log('Submitting Stock Transaction:', {
         ingredientId: values.ingredientId,
+        branchId: userData.branchId,
         mode,
         quantity,
         changeAmount,
@@ -168,6 +169,7 @@ export function QuickOperationDialog({
 
       await updateStockTransaction(
         values.ingredientId,
+        userData.branchId,
         changeAmount,
         userData.id,
         values.reason as any,
@@ -261,7 +263,7 @@ export function QuickOperationDialog({
                       onValueChange={field.onChange}
                       value={field.value}
                       // Allow changing unit if multiple options exist (future proofing)
-                      disabled={!selectedIngredient} 
+                      disabled={!selectedIngredient}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -270,12 +272,12 @@ export function QuickOperationDialog({
                       </FormControl>
                       <SelectContent>
                         {selectedIngredient ? (
-                           <>
-                             <SelectItem value={selectedIngredient.unit}>
-                               {selectedIngredient.unit} (Base)
-                             </SelectItem>
-                             {/* Future: Add purchase unit option here if available */}
-                           </>
+                          <>
+                            <SelectItem value={selectedIngredient.unit}>
+                              {selectedIngredient.unit} (Base)
+                            </SelectItem>
+                            {/* Future: Add purchase unit option here if available */}
+                          </>
                         ) : (
                           <SelectItem value="unit" disabled>Select Item First</SelectItem>
                         )}
@@ -286,7 +288,7 @@ export function QuickOperationDialog({
                 )}
               />
             </div>
-            
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel

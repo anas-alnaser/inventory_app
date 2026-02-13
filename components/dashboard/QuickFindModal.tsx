@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { getIngredients, getInventoryWithStock, type InventoryItem } from "@/lib/services"
+import { useAuth } from "@/lib/hooks/useAuth"
 import { QuickOperationDialog } from "./QuickOperationDialog"
 
 interface QuickFindModalProps {
@@ -20,11 +21,13 @@ interface QuickFindModalProps {
 }
 
 export function QuickFindModal({ isOpen, onClose }: QuickFindModalProps) {
+  const { userData } = useAuth()
+  const branchId = userData?.branchId
   const [query, setQuery] = useState("")
   const [items, setItems] = useState<InventoryItem[]>([])
   const [filteredItems, setFilteredItems] = useState<InventoryItem[]>([])
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
-  
+
   // State for sub-dialogs
   const [operationMode, setOperationMode] = useState<"add" | "use" | null>(null)
 
@@ -34,8 +37,9 @@ export function QuickFindModal({ isOpen, onClose }: QuickFindModalProps) {
       setQuery("")
       setSelectedItem(null)
       const fetchInventory = async () => {
+        if (!branchId) return
         try {
-          const data = await getInventoryWithStock()
+          const data = await getInventoryWithStock(branchId)
           setItems(data)
         } catch (error) {
           console.error("Failed to fetch inventory:", error)
@@ -51,14 +55,14 @@ export function QuickFindModal({ isOpen, onClose }: QuickFindModalProps) {
       setFilteredItems([])
       return
     }
-    
+
     const lowerQuery = query.toLowerCase()
-    const results = items.filter(item => 
+    const results = items.filter(item =>
       item.ingredient.name.toLowerCase().includes(lowerQuery) ||
       item.ingredient.id.toLowerCase().includes(lowerQuery)
     )
     setFilteredItems(results)
-    
+
     // Auto-select if exact match or only one result
     if (results.length === 1) {
       // Optional: auto-select? Maybe better to let user click to avoid jumping
@@ -89,7 +93,7 @@ export function QuickFindModal({ isOpen, onClose }: QuickFindModalProps) {
           <DialogHeader>
             <DialogTitle>Quick Find Item</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-2">
             {!selectedItem ? (
               <>
@@ -104,7 +108,7 @@ export function QuickFindModal({ isOpen, onClose }: QuickFindModalProps) {
                     autoFocus
                   />
                 </div>
-                
+
                 <div className="max-h-[300px] overflow-y-auto space-y-1">
                   {filteredItems.length > 0 ? (
                     filteredItems.map((item) => (
@@ -124,22 +128,21 @@ export function QuickFindModal({ isOpen, onClose }: QuickFindModalProps) {
                             </p>
                           </div>
                         </div>
-                        <div className={`px-2 py-1 rounded-full text-xs font-medium border ${
-                          item.status === 'good' ? 'bg-success/10 text-success border-success/20' :
-                          item.status === 'low' ? 'bg-warning/10 text-warning border-warning/20' :
-                          'bg-destructive/10 text-destructive border-destructive/20'
-                        }`}>
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium border ${item.status === 'good' ? 'bg-success/10 text-success border-success/20' :
+                            item.status === 'low' ? 'bg-warning/10 text-warning border-warning/20' :
+                              'bg-destructive/10 text-destructive border-destructive/20'
+                          }`}>
                           {item.status.toUpperCase()}
                         </div>
                       </div>
                     ))
                   ) : query ? (
-                     <div className="text-center py-8 text-muted-foreground">
-                       <p>No items found.</p>
-                       <Button variant="link" className="mt-2">
-                         Create New Item
-                       </Button>
-                     </div>
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>No items found.</p>
+                      <Button variant="link" className="mt-2">
+                        Create New Item
+                      </Button>
+                    </div>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground flex flex-col items-center">
                       <Search className="h-8 w-8 mb-2 opacity-50" />
@@ -185,15 +188,15 @@ export function QuickFindModal({ isOpen, onClose }: QuickFindModalProps) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <Button 
-                    className="h-14 bg-warning hover:bg-warning/90 text-warning-foreground" 
+                  <Button
+                    className="h-14 bg-warning hover:bg-warning/90 text-warning-foreground"
                     onClick={() => handleAction("use")}
                   >
                     <Minus className="mr-2 h-5 w-5" />
                     Log Usage
                   </Button>
-                  <Button 
-                    className="h-14 bg-success hover:bg-success/90" 
+                  <Button
+                    className="h-14 bg-success hover:bg-success/90"
                     onClick={() => handleAction("add")}
                   >
                     <Plus className="mr-2 h-5 w-5" />

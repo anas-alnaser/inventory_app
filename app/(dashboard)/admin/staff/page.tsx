@@ -84,6 +84,7 @@ import type { UserRole } from "@/types/entities"
 // Role badge colors
 const roleBadgeColors: Record<UserRole, string> = {
     owner: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+    admin: "bg-red-500/10 text-red-500 border-red-500/20",
     manager: "bg-blue-500/10 text-blue-500 border-blue-500/20",
     stock_manager: "bg-amber-500/10 text-amber-500 border-amber-500/20",
     supervisor: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",

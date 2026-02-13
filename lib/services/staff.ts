@@ -281,6 +281,7 @@ export async function getStaffByPIN(
 export function getRoleDisplayName(role: UserRole): string {
     const roleNames: Record<UserRole, string> = {
         owner: "Owner",
+        admin: "Admin",
         manager: "Manager",
         stock_manager: "Stock Manager",
         supervisor: "Supervisor",

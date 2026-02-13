@@ -5,19 +5,19 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStaff } from '@/lib/contexts/StaffContext'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { getUserByPin } from '@/lib/services/users'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/lib/hooks/use-toast'
-import { X, Delete } from 'lucide-react'
+import { X, Delete, Loader2 } from 'lucide-react'
 import { createAttendanceRecord, updateAttendanceShiftId } from '@/lib/services/attendance'
 import { OpenShiftModal } from '@/components/shifts/OpenShiftModal'
 import type { User } from '@/types/entities'
 
 export default function LockScreenPage() {
   const router = useRouter()
-  const { setActiveStaff } = useStaff()
+  const { loginWithPin, activeStaff, isLoading: staffLoading, setActiveStaff } = useStaff()
   const { userData, isAuthenticated, loading: authLoading } = useAuth()
+
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [validating, setValidating] = useState(false)
@@ -26,9 +26,36 @@ export default function LockScreenPage() {
   const [pendingAttendanceId, setPendingAttendanceId] = useState<string | null>(null)
   const [shakeKeypad, setShakeKeypad] = useState(false)
 
+  // If already logged in, redirect based on role
+  useEffect(() => {
+    if (staffLoading) return
+
+    if (activeStaff) {
+      redirectByRole(activeStaff.role)
+    }
+  }, [activeStaff, staffLoading])
+
+  // Redirect helper based on role
+  const redirectByRole = (role: string) => {
+    switch (role) {
+      case 'cashier':
+        router.replace('/pos')
+        break
+      case 'stock_manager':
+        router.replace('/inventory')
+        break
+      case 'manager':
+      case 'supervisor':
+      case 'admin':
+      case 'owner':
+      default:
+        router.replace('/dashboard')
+        break
+    }
+  }
+
   // Handle number pad input
   const handleNumberPress = useCallback((number: string) => {
-    // Allow up to 6 digits
     setPin((prev) => {
       if (prev.length < 6) {
         return prev + number
@@ -59,30 +86,29 @@ export default function LockScreenPage() {
       setError(null)
 
       try {
-        // Get user by PIN (optionally filter by branch_id)
-        const foundUser = await getUserByPin(pin, userData?.branch_id)
+        // Use context's loginWithPin
+        const result = await loginWithPin(pin, userData?.branchId)
 
-        if (!foundUser) {
-          // Invalid PIN - shake keypad and show error
+        if (!result.success || !result.user) {
           setShakeKeypad(true)
           setTimeout(() => setShakeKeypad(false), 500)
-          setError('Invalid PIN')
+          setError(result.error || 'Invalid PIN')
           setPin('')
           setValidating(false)
           return
         }
 
-        // User found - create attendance record first
+        const foundUser = result.user
+
+        // Create attendance record
         const attendanceResult = await createAttendanceRecord(foundUser.id)
 
         if (!attendanceResult.success || !attendanceResult.attendance) {
           console.error('Attendance creation failed:', attendanceResult.error)
-          setError(`Failed to create attendance record: ${attendanceResult.error || 'Unknown error'}`)
-          setValidating(false)
-          return
+          // Continue anyway - attendance is not critical for login
+        } else {
+          setPendingAttendanceId(attendanceResult.attendance.id)
         }
-
-        setPendingAttendanceId(attendanceResult.attendance.id)
 
         // If cashier, show open shift modal
         if (foundUser.role === 'cashier') {
@@ -90,18 +116,12 @@ export default function LockScreenPage() {
           setShowOpenShiftModal(true)
           setValidating(false)
         } else {
-          // For non-cashiers, set active staff and redirect based on role
-          setActiveStaff(foundUser)
+          // For non-cashiers, redirect based on role
           toast({
             title: 'Welcome back!',
             description: `Logged in as ${foundUser.name}`,
           })
-          // Manager/Supervisor go to dashboard, others to POS
-          if (foundUser.role === 'manager' || foundUser.role === 'supervisor') {
-            router.push('/dashboard')
-          } else {
-            router.push('/pos')
-          }
+          redirectByRole(foundUser.role)
           setValidating(false)
         }
       } catch (error: any) {
@@ -119,13 +139,13 @@ export default function LockScreenPage() {
       handleLogin()
     }, 300)
     return () => clearTimeout(timer)
-  }, [pin, validating, userData?.branch_id, setActiveStaff, router])
+  }, [pin, validating, userData?.branchId, loginWithPin, router])
 
   // Handle keyboard input
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (validating) return
-      
+
       if (e.key >= '0' && e.key <= '9') {
         handleNumberPress(e.key)
       } else if (e.key === 'Backspace') {
@@ -138,27 +158,26 @@ export default function LockScreenPage() {
   }, [validating, handleNumberPress, handleDelete])
 
   // Show loading state
-  if (authLoading) {
+  if (authLoading || staffLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <div className="space-y-4 w-full max-w-md">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-64 w-full" />
+        <div className="text-center space-y-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     )
   }
 
-  // Redirect if not authenticated
+  // Redirect if not authenticated (Firebase auth)
   if (!isAuthenticated) {
-    router.push('/login')
+    router.replace('/login')
     return null
   }
 
   // Redirect owners who are NOT store devices to dashboard
-  // Store devices should stay on lock screen to enter staff PIN
   if (userData?.role === 'owner' && userData?.is_store_device !== true) {
-    router.push('/dashboard')
+    router.replace('/dashboard')
     return null
   }
 
@@ -183,10 +202,9 @@ export default function LockScreenPage() {
                 key={index}
                 className={`
                   h-16 w-16 rounded-lg border-2 flex items-center justify-center text-2xl font-bold transition-all
-                  ${
-                    index < pin.length
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-background'
+                  ${index < pin.length
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background'
                   }
                 `}
               >
@@ -258,7 +276,8 @@ export default function LockScreenPage() {
             </Button>
           </div>
           {validating && (
-            <div className="text-center text-muted-foreground text-sm mt-4">
+            <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm mt-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
               Validating...
             </div>
           )}
@@ -272,7 +291,7 @@ export default function LockScreenPage() {
           onOpenChange={(open) => {
             setShowOpenShiftModal(open)
             if (!open) {
-              // Modal was cancelled - reset state
+              // Modal was cancelled - keep staff logged in but don't redirect yet
               setPendingStaff(null)
               setPendingAttendanceId(null)
               setPin('')
@@ -286,15 +305,14 @@ export default function LockScreenPage() {
               await updateAttendanceShiftId(pendingAttendanceId, shiftId)
             }
 
-            // Set active staff and redirect to POS for cashiers
-            setActiveStaff(pendingStaff)
+            // Staff is already set in context via loginWithPin
             toast({
               title: 'Welcome back!',
               description: `Logged in as ${pendingStaff.name}. Shift opened.`,
             })
             setPendingStaff(null)
             setPendingAttendanceId(null)
-            router.push('/pos')
+            router.replace('/pos')
           }}
         />
       )}

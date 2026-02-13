@@ -3,13 +3,13 @@
 import { useState } from "react"
 import { motion } from "framer-motion"
 import { useQuery, useMutation } from "@tanstack/react-query"
-import { 
-  Sparkles, 
-  AlertTriangle, 
-  Calendar, 
-  TrendingUp, 
+import {
+  Sparkles,
+  AlertTriangle,
+  Calendar,
+  TrendingUp,
   TrendingDown,
-  Package, 
+  Package,
   RefreshCw,
   ChevronRight,
   Clock,
@@ -40,8 +40,8 @@ import { toast } from "@/lib/hooks/use-toast"
 import { generateAllForecasts, type ForecastResult } from "@/lib/ai/forecast"
 import { getIngredients, getAllStock } from "@/lib/services"
 import { useAuth } from "@/lib/hooks/useAuth"
-import { 
-  generateForecast as generateAIForecast, 
+import {
+  generateForecast as generateAIForecast,
   getMenuDrivenForecast,
   getParLevelRecommendation,
   getExpiryRisks,
@@ -107,7 +107,7 @@ function ExpiryRiskCard({ risk, ingredientName }: { risk: ExpiryRisk; ingredient
               risk.risk_level === 'critical' ? "text-red-500" : "text-amber-500"
             )} />
           </div>
-          
+
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
               <h4 className="font-medium">{ingredientName || 'Unknown Ingredient'}</h4>
@@ -115,12 +115,12 @@ function ExpiryRiskCard({ risk, ingredientName }: { risk: ExpiryRisk; ingredient
                 {risk.risk_level}
               </Badge>
             </div>
-            
+
             <div className="text-sm text-muted-foreground space-y-1">
               <p>Expires in <strong>{risk.days_until_expiry} days</strong></p>
               <p>Predicted waste: <strong>{risk.predicted_waste.toFixed(1)}</strong> units</p>
             </div>
-            
+
             {risk.ai_recommendation && (
               <div className="mt-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
                 <div className="flex items-center gap-2 mb-1">
@@ -164,9 +164,13 @@ export default function ForecastsPage() {
 
   // Generate local forecasts
   const { data: forecasts = [], isLoading: forecastsLoading, refetch: refetchForecasts } = useQuery({
-    queryKey: ["forecasts"],
-    queryFn: () => generateAllForecasts(),
+    queryKey: ["forecasts", userData?.branchId],
+    queryFn: () => {
+      if (!userData?.branchId) return [];
+      return generateAllForecasts(userData.branchId);
+    },
     refetchInterval: 60000,
+    enabled: !!userData?.branchId,
   })
 
   // Fetch expiry risks (only if Cloud AI is enabled)
@@ -312,8 +316,8 @@ export default function ForecastsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            onClick={handleGenerateShoppingList} 
+          <Button
+            onClick={handleGenerateShoppingList}
             disabled={isGeneratingShoppingList}
             className="gap-2"
           >
@@ -350,7 +354,7 @@ export default function ForecastsPage() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
@@ -364,7 +368,7 @@ export default function ForecastsPage() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
@@ -570,119 +574,119 @@ export default function ForecastsPage() {
               </CardHeader>
               <CardContent>
                 {menuForecastLoading ? (
-                <div className="space-y-3">
-                  {[...Array(5)].map((_, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <Skeleton className="h-10 w-10 rounded-lg" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-1/3" />
-                        <Skeleton className="h-3 w-1/2" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : menuRequirements.length > 0 ? (
-                <div className="space-y-3">
-                  {menuRequirements.map((req) => {
-                    const { ingredient, stock } = getIngredientInfo(req.ingredientId)
-                    const currentStock = stock?.quantity || 0
-                    const shortage = req.requiredQuantity - currentStock
-
-                    return (
-                      <div
-                        key={req.ingredientId}
-                        className={cn(
-                          "p-4 rounded-lg border",
-                          shortage > 0 ? "border-red-200 bg-red-50/50 dark:bg-red-950/20" : "border-border"
-                        )}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">{ingredient?.name || 'Unknown'}</p>
-                            <p className="text-sm text-muted-foreground">
-                              Used in: {req.usedInMenuItems.join(', ')}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-medium">
-                              Need: {req.requiredQuantity.toFixed(1)} {ingredient?.unit || 'units'}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              Have: {currentStock.toFixed(1)}
-                            </p>
-                            {shortage > 0 && (
-                              <Badge variant="destructive" className="mt-1">
-                                Short {shortage.toFixed(1)}
-                              </Badge>
-                            )}
-                          </div>
+                  <div className="space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="flex items-center gap-4">
+                        <Skeleton className="h-10 w-10 rounded-lg" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-4 w-1/3" />
+                          <Skeleton className="h-3 w-1/2" />
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No menu-driven forecast data available.</p>
-                  <p className="text-sm">Add recipes to menu items to enable this feature.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    ))}
+                  </div>
+                ) : menuRequirements.length > 0 ? (
+                  <div className="space-y-3">
+                    {menuRequirements.map((req) => {
+                      const { ingredient, stock } = getIngredientInfo(req.ingredientId)
+                      const currentStock = stock?.quantity || 0
+                      const shortage = req.requiredQuantity - currentStock
+
+                      return (
+                        <div
+                          key={req.ingredientId}
+                          className={cn(
+                            "p-4 rounded-lg border",
+                            shortage > 0 ? "border-red-200 bg-red-50/50 dark:bg-red-950/20" : "border-border"
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{ingredient?.name || 'Unknown'}</p>
+                              <p className="text-sm text-muted-foreground">
+                                Used in: {req.usedInMenuItems.join(', ')}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium">
+                                Need: {req.requiredQuantity.toFixed(1)} {ingredient?.unit || 'units'}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Have: {currentStock.toFixed(1)}
+                              </p>
+                              {shortage > 0 && (
+                                <Badge variant="destructive" className="mt-1">
+                                  Short {shortage.toFixed(1)}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No menu-driven forecast data available.</p>
+                    <p className="text-sm">Add recipes to menu items to enable this feature.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         )}
 
         {/* Expiry Risks Tab */}
         {ENABLE_CLOUD_AI && (
           <TabsContent value="expiry" className="space-y-4">
-          {expiryLoading ? (
-            <div className="space-y-3">
-              {[...Array(3)].map((_, i) => (
-                <Card key={i}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-4">
-                      <Skeleton className="h-10 w-10 rounded-lg" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-1/3" />
-                        <Skeleton className="h-3 w-1/2" />
-                        <Skeleton className="h-16 w-full mt-2" />
+            {expiryLoading ? (
+              <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-4">
+                        <Skeleton className="h-10 w-10 rounded-lg" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-4 w-1/3" />
+                          <Skeleton className="h-3 w-1/2" />
+                          <Skeleton className="h-16 w-full mt-2" />
+                        </div>
                       </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : expiryRisks.length > 0 ? (
+              <div className="space-y-3">
+                {expiryRisks.map((risk, index) => {
+                  const { ingredient } = getIngredientInfo(risk.ingredient_id)
+                  return (
+                    <ExpiryRiskCard
+                      key={index}
+                      risk={risk}
+                      ingredientName={ingredient?.name}
+                    />
+                  )
+                })}
+              </div>
+            ) : (
+              <Card className="border-success/20 bg-success/5">
+                <CardContent className="py-12">
+                  <div className="flex flex-col items-center justify-center text-center space-y-4">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+                      <Package className="h-8 w-8 text-success" />
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : expiryRisks.length > 0 ? (
-            <div className="space-y-3">
-              {expiryRisks.map((risk, index) => {
-                const { ingredient } = getIngredientInfo(risk.ingredient_id)
-                return (
-                  <ExpiryRiskCard
-                    key={index}
-                    risk={risk}
-                    ingredientName={ingredient?.name}
-                  />
-                )
-              })}
-            </div>
-          ) : (
-            <Card className="border-success/20 bg-success/5">
-              <CardContent className="py-12">
-                <div className="flex flex-col items-center justify-center text-center space-y-4">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
-                    <Package className="h-8 w-8 text-success" />
+                    <div>
+                      <h2 className="text-xl font-semibold text-success mb-2">No Expiry Risks</h2>
+                      <p className="text-muted-foreground max-w-md">
+                        All stock items with expiry dates are predicted to be used before expiration.
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-xl font-semibold text-success mb-2">No Expiry Risks</h2>
-                    <p className="text-muted-foreground max-w-md">
-                      All stock items with expiry dates are predicted to be used before expiration.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         )}
       </Tabs>
@@ -704,7 +708,7 @@ export default function ForecastsPage() {
               AI-calculated safety stock levels based on usage patterns
             </DialogDescription>
           </DialogHeader>
-          
+
           {parLevelMutation.isPending ? (
             <div className="space-y-4 py-4">
               <Skeleton className="h-8 w-full" />
@@ -727,7 +731,7 @@ export default function ForecastsPage() {
                   </CardContent>
                 </Card>
               </div>
-              
+
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-muted-foreground">Average Daily Usage</span>
@@ -738,14 +742,14 @@ export default function ForecastsPage() {
                   <span className="font-medium">{parLevelData.usageVariance.toFixed(2)}</span>
                 </div>
               </div>
-              
+
               <div className="bg-primary/5 p-4 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
                   <Lightbulb className="h-4 w-4 text-primary" />
                   <span className="font-medium text-primary">Tip</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Set your minimum stock level to {parLevelData.recommendedMin} and reorder when you 
+                  Set your minimum stock level to {parLevelData.recommendedMin} and reorder when you
                   hit this level to maintain a 3-day safety buffer.
                 </p>
               </div>

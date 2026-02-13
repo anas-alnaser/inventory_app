@@ -1,6 +1,6 @@
 "use client"
 
-import { QRCode } from 'react-qr-code'
+import QRCode from 'react-qr-code'
 import type { Invoice } from '@/types/entities'
 import { formatCurrency } from '@/lib/services/tax'
 import { Card, CardContent } from '@/components/ui/card'

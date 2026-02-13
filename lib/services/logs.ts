@@ -43,6 +43,19 @@ export async function getStockLogs(
   })) as StockLog[];
 }
 
+/**
+ * Get all stock logs (for anomaly detection)
+ * Returns all logs without branch filter
+ */
+export async function getAllStockLogs(): Promise<StockLog[]> {
+  const q = query(stockLogsRef, orderBy('created_at', 'desc'));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...(docSnap.data() as object),
+  })) as StockLog[];
+}
+
 export async function getStockLogsByDateRange(
   branchId: string,
   startDate: Date,

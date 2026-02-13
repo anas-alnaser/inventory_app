@@ -101,17 +101,20 @@ function calculateConfidence(logs: StockLog[], daysWithData: number): number {
 /**
  * Generate forecast for a single ingredient
  */
-export async function generateForecast(ingredientId: string): Promise<ForecastResult | null> {
+export async function generateForecast(ingredientId: string, branchId: string): Promise<ForecastResult | null> {
+  if (!branchId) {
+    throw new Error('branchId is required for forecasting');
+  }
   try {
     // Fetch ingredient details
     const ingredient = await getIngredientById(ingredientId)
     if (!ingredient) return null
 
     // Fetch stock logs (last 50 logs should be enough)
-    const logs = await getStockLogs(ingredientId, 50)
+    const logs = await getStockLogs(branchId, ingredientId, 50)
 
     // Fetch current stock
-    const stock = await getStockByIngredient(ingredientId)
+    const stock = await getStockByIngredient(ingredientId, branchId)
     const currentStock = stock?.quantity || 0
 
     // Calculate average daily usage
@@ -171,12 +174,15 @@ export async function generateForecast(ingredientId: string): Promise<ForecastRe
 /**
  * Generate forecasts for all ingredients
  */
-export async function generateAllForecasts(): Promise<ForecastResult[]> {
+export async function generateAllForecasts(branchId: string): Promise<ForecastResult[]> {
+  if (!branchId) {
+    throw new Error('branchId is required for forecasting');
+  }
   const { getIngredients } = await import('@/lib/services')
   const ingredients = await getIngredients()
 
   const forecasts = await Promise.all(
-    ingredients.map(ingredient => generateForecast(ingredient.id))
+    ingredients.map(ingredient => generateForecast(ingredient.id, branchId))
   )
 
   return forecasts.filter((f): f is ForecastResult => f !== null)
@@ -185,8 +191,8 @@ export async function generateAllForecasts(): Promise<ForecastResult[]> {
 /**
  * Get the most critical forecast (item running out soonest)
  */
-export async function getMostCriticalForecast(): Promise<ForecastResult | null> {
-  const forecasts = await generateAllForecasts()
+export async function getMostCriticalForecast(branchId: string): Promise<ForecastResult | null> {
+  const forecasts = await generateAllForecasts(branchId)
 
   // Filter to only items that need reorder
   const criticalForecasts = forecasts.filter(f => f.needsReorder && f.daysRemaining < Infinity)
